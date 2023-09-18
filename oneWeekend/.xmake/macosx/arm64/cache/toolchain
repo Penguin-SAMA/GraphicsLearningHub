@@ -1,0 +1,32 @@
+{
+    xcode_arch_arm64_plat_macosx = {
+        __global = true,
+        xcode = "/Applications/Xcode.app",
+        xcode_sdkver = "13.3",
+        xcode_sysroot = "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX13.3.sdk",
+        plat = "macosx",
+        arch = "arm64",
+        bindir = "/Applications/Xcode-beta.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+        target_minver = "13.3"
+    },
+    tool_target_inOneWeekend_macosx_arm64_ld = {
+        program = "/Applications/Xcode-beta.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++",
+        toolchain_info = {
+            plat = "macosx",
+            arch = "arm64",
+            name = "xcode",
+            cachekey = "xcode_arch_arm64_plat_macosx"
+        },
+        toolname = "clangxx"
+    },
+    tool_target_inOneWeekend_macosx_arm64_cxx = {
+        program = "/Applications/Xcode-beta.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+        toolchain_info = {
+            plat = "macosx",
+            arch = "arm64",
+            name = "xcode",
+            cachekey = "xcode_arch_arm64_plat_macosx"
+        },
+        toolname = "clang"
+    }
+}

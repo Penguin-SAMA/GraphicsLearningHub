@@ -1,0 +1,20 @@
+{
+    cmdlines = {
+        "xmake show -tinOneWeekend",
+        "xmake show -tinOneWeekend",
+        "xmake config --mode=debug",
+        "xmake project -k compile_commands --lsp=clangd",
+        "xmake show -tinOneWeekend",
+        "xmake ",
+        "xmake run inOneWeekend",
+        "xmake run inOneWeekend",
+        "xmake ",
+        "xmake run inOneWeekend",
+        "xmake ",
+        "xmake run inOneWeekend",
+        "xmake ",
+        "xmake run inOneWeekend",
+        "xmake ",
+        "xmake run inOneWeekend"
+    }
+}
