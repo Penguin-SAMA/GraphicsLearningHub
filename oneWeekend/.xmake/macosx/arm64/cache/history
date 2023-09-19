@@ -15,6 +15,15 @@
         "xmake ",
         "xmake run inOneWeekend",
         "xmake ",
+        "xmake run inOneWeekend",
+        "xmake ",
+        "xmake lua /opt/homebrew/Cellar/xmake/2.8.2/share/xmake/modules/private/utils/statistics.lua",
+        "xmake lua /opt/homebrew/Cellar/xmake/2.8.2/share/xmake/actions/build/cleaner.lua",
+        "xmake run inOneWeekend",
+        "xmake ",
+        "xmake run inOneWeekend",
+        "xmake ",
+        "xmake run",
         "xmake run inOneWeekend"
     }
 }
