@@ -1,6 +1,0 @@
-[
-{
-  "directory": "/Users/samapenguin/Desktop/GraphicsLearningHub/oneWeekend",
-  "arguments": ["/Applications/Xcode-beta.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang", "-c", "-Qunused-arguments", "-target", "arm64-apple-macos13.3", "-isysroot", "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX13.3.sdk", "-g", "-O0", "-std=c++17", "-o", "build/.objs/inOneWeekend/macosx/arm64/debug/src/main.cpp.o", "src/main.cpp"],
-  "file": "src/main.cpp"
-}]

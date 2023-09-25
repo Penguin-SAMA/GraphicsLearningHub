@@ -1,12 +1,11 @@
-# 忽略 .xmake 文件夹
-.xmake/
-
-# 忽略 .cache 文件夹
-.cache/
-
-# 忽略 .DS_Store 文件（针对 macOS）
-.DS_Store
-
 # 忽略 build 文件夹
 build/
 
+# 忽略 .vscode 文件夹
+.vscode/
+
+# 忽略 .xmake 文件夹
+.xmake/
+
+# 忽略 image 文件夹
+image/
