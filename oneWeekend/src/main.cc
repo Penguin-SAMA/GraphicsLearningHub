@@ -4,8 +4,7 @@
 #include "hittable_list.h"
 #include "sphere.h"
 
-int main()
-{
+int main() {
     hittable_list world;
 
     world.add(make_shared<sphere>(point3(0, 0, -1), 0.5));
