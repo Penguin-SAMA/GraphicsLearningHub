@@ -36,3 +36,4 @@ oneWeekend/.gitignore
 .vscode
 .xmake
 build
+*.ppm
