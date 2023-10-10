@@ -4,17 +4,12 @@
 #include "hittable.h"
 #include "vec3.h"
 
-class sphere : public hittable
-{
-public:
-    sphere(point3 _center, double _radius)
-    : center(_center)
-    , radius(_radius)
-    {
-    }
+class sphere : public hittable {
+  public:
+    sphere(point3 _center, double _radius, std::shared_ptr<material> _material)
+        : center(_center), radius(_radius), mat(_material) {}
 
-    bool hit(const ray &r, interval ray_t, hit_record &rec) const override
-    {
+    bool hit(const ray &r, interval ray_t, hit_record &rec) const override {
         vec3 oc = r.origin() - center;
         // auto a = dot(r.direction(), r.direction());
         // auto b = 2.0 * dot(oc, r.direction());
@@ -30,11 +25,9 @@ public:
         auto sqrtd = sqrt(discriminant);
 
         auto root = (-half_b - sqrtd) / a;
-        if (!ray_t.surrounds(root))
-        {
+        if (!ray_t.surrounds(root)) {
             root = (-half_b + sqrtd) / a;
-            if (!ray_t.surrounds(root))
-            {
+            if (!ray_t.surrounds(root)) {
                 return false;
             }
         }
@@ -43,13 +36,15 @@ public:
         rec.p = r.at(rec.t);
         vec3 outward_normal = (rec.p - center) / radius;
         rec.set_face_normal(r, outward_normal);
+        rec.mat = mat;
 
         return true;
     }
 
-private:
+  private:
     point3 center;
     double radius;
+    shared_ptr<material> mat;
 };
 
 #endif
