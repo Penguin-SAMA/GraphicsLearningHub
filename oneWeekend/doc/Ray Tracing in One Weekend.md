@@ -292,4 +292,244 @@ int main() {
 
 #  4. 光线、简易相机以及背景
 ## 4.1 光线类
-所有光线追踪器都拥有的是光线类和沿着光线看到的颜色的计算。让我们将射线视为一个函数$P(t) = A + tb$
+所有光线追踪器都拥有的是光线类和沿着光线看到的颜色的计算。让我们将射线视为一个函数
+<img src="https://www.zhihu.com/equation?tex= P(t) = A + t\vec{b} " alt=" P(t) = A + t\vec{b} " class="ee_img tr_noresize" eeimg="1">
+。这里的
+<img src="https://www.zhihu.com/equation?tex=P" alt="P" class="ee_img tr_noresize" eeimg="1">
+是沿着三维空间中某条直线的三维位置。其中
+<img src="https://www.zhihu.com/equation?tex=A" alt="A" class="ee_img tr_noresize" eeimg="1">
+是射线原点，
+<img src="https://www.zhihu.com/equation?tex=\vec{b}" alt="\vec{b}" class="ee_img tr_noresize" eeimg="1">
+是射线方向，
+<img src="https://www.zhihu.com/equation?tex=t" alt="t" class="ee_img tr_noresize" eeimg="1">
+是类型为`double`的实数。输入不同的
+<img src="https://www.zhihu.com/equation?tex=t" alt="t" class="ee_img tr_noresize" eeimg="1">
+值，
+<img src="https://www.zhihu.com/equation?tex=P(t)" alt="P(t)" class="ee_img tr_noresize" eeimg="1">
+ 就会沿着光线移动这个点。如果您输入的是负数
+<img src="https://www.zhihu.com/equation?tex=t" alt="t" class="ee_img tr_noresize" eeimg="1">
+，就可以在3D线上的任何位置移动。如果是正的
+<img src="https://www.zhihu.com/equation?tex=t" alt="t" class="ee_img tr_noresize" eeimg="1">
+，您只能得到A前面的部分，这通常被称为半线(*half-line*)或光线(*ray*)。
+![](https://s2.loli.net/2023/11/09/r8ijsYPCAplXQBV.png)
+我们可以将ray的概念表示为一个class，并且将
+<img src="https://www.zhihu.com/equation?tex=P(t)" alt="P(t)" class="ee_img tr_noresize" eeimg="1">
+用函数`ray::at(t)`来表示：
+```cpp
+//ray.h
+#ifndef RAY_H
+#define RAY_H
+
+#include "vec3.h"
+
+class ray {
+  public:
+    ray() {}
+
+    ray(const point3& origin, const vec3& direction) : orig(origin), dir(direction) {}
+
+    point3 origin() const  { return orig; }
+    vec3 direction() const { return dir; }
+
+    point3 at(double t) const {
+        return orig + t*dir;
+    }
+
+  private:
+    point3 orig;
+    vec3 dir;
+};
+
+#endif
+```
+## 4.2 向场景中发送光线
+现在我们准备转个弯，制作一个光线追踪器。光线追踪器的核心是发送穿过像素的光线，并计算光线方向上的颜色。相关步骤如下：
+1. 计算从 "眼睛 "穿过像素的光线，
+2. 确定射线与哪些物体相交，
+3. 以及为最近的交点计算颜色。
+
+在第一次开发光线追踪器时，我总是用一个简单的摄像头来启动和运行代码。
+
+我经常在调试时使用正方形图像而遇到问题，因为我太频繁地颠倒了x和y，所以我们将使用一个非正方形的图像。正方形图像的宽高比是1:1，因为它的宽度和高度相同。由于我们想要一个非正方形图像，我们将选择16:9，因为它非常常见。16:9的宽高比意味着图像宽度与高度的比率是16:9。换句话说，给定一个16:9宽高比的图像，则
+
+<img src="https://www.zhihu.com/equation?tex=
+width/height = 16/9=1.7778" alt="
+width/height = 16/9=1.7778" class="ee_img tr_noresize" eeimg="1">
+
+
+举个实际例子，一幅宽800像素、高400像素的图像的长宽比为2:1。
+
+图像的高宽比可以通过高度和宽度的比值来确定。不过，由于我们心中已经有了一个给定的高宽比，因此可以先设置图像的宽度和高宽比，然后再以此计算其高度。这样，我们就可以通过改变图像宽度来放大或缩小图像，而不会影响我们想要的宽高比。我们必须确保在求解图像高度时，得到的高度至少为 1。
+
+除了设置渲染图像的像素尺寸外，我们还需要设置一个虚拟视口(*viewport*)，以便我们的场景光线能通过。视口是三维世界中的一个虚拟矩形，包含图像像素位置的网格。如果像素在水平方向上的间距与垂直方向上的间距相等，那么将它们包围起来的视口就会与渲染的图像具有相同的高宽比。相邻两个像素之间的距离称为像素间距，标准的像素间距为正方形。
+
+首先，我们任意选择视口高度为2.0，然后缩放视口宽度，以获得所需的高宽比。下面是这段代码的片段：
+
+```cpp
+auto aspect_ratio = 16.0 / 9.0;
+int image_width = 400;
+
+// 计算图像高度，确保至少为 1。
+int image_height = static_cast<int>(image_width / aspect_ratio);
+image_height = (image_height < 1) ? 1 : image_height;
+
+// 视口宽度小于 1 也可以，因为它们是真实值。
+auto viewport_height = 2.0;
+auto viewport_width = viewport_height * (static_cast<double>(image_width)/image_height);
+```
+
+如果你想知道为什么我们在计算`viewport_width`时不直接使用`aspect_ratio`，那是因为设置为`aspect_ratio`的值是理想的比例，它可能不是`image_width`和`image_height`之间的实际比例。如果图像高度可以是实值，而不仅仅是整数，那么使用`aspect_ratio`就没有问题。但是，`image_width`和`image_height`之间的实际比例会因代码的两个部分而变化。首先，`integer_height`会向下舍入为最接近的整数，这可能会增加比例。其次，我们不允许`integer_height`小于 1，这也会改变实际的宽高比。
+
+请注意，`aspect_ratio`是一个理想的比例，我们尽可能以图像宽度与图像高度的整数比例来近似它。为了让我们的视口比例完全匹配我们的图像比例，我们使用计算出的图像宽高比来确定我们最终的视口宽度。
+
+接下来，我们将定义摄像机中心：三维空间中的一个点，所有场景光线都将从这个点出发（通常也称为眼睛点(*eye point*)）。从摄像机中心到视口中心的矢量将与视口正交。我们最初会将视口与摄像机中心点之间的距离设置为一个单位。这个距离通常称为焦距(*focal length*)。
+
+为了简化问题，我们将摄像机中心设置在
+<img src="https://www.zhihu.com/equation?tex=(0,0,0)" alt="(0,0,0)" class="ee_img tr_noresize" eeimg="1">
+位置。我们还将设置y轴向上，x轴向右，负z轴指向观察方向。（这通常被称为右手坐标系(*right-handed coordinates*)。）
+
+![](https://s2.loli.net/2023/11/09/lZwshv7eg93E6oW.png)
+
+现在是不可避免的棘手部分。虽然我们的三维空间有上述约定，但这与我们的图像坐标相冲突，我们希望将第一个像素放在左上方，然后一直向下直到右下方的最后一个像素。这意味着我们的图像坐标Y轴是倒置的，即Y轴在图像上向下递增。
+
+在扫描我们的图像时，我们将从左上角的像素
+<img src="https://www.zhihu.com/equation?tex=(0,0)" alt="(0,0)" class="ee_img tr_noresize" eeimg="1">
+开始，从左到右扫描每一行，然后逐行从上到下扫描。为了帮助浏览像素网格，我们将使用一个从左边缘到右边缘的向量
+<img src="https://www.zhihu.com/equation?tex=V_u" alt="V_u" class="ee_img tr_noresize" eeimg="1">
+，和一个从上边缘到下边缘的向量
+<img src="https://www.zhihu.com/equation?tex=V_v" alt="V_v" class="ee_img tr_noresize" eeimg="1">
+。
+
+我们的像素网格将以像素间距的一半嵌入视口边缘。通过这种方式，我们的视口区域被均匀地划分为宽度
+<img src="https://www.zhihu.com/equation?tex=\times" alt="\times" class="ee_img tr_noresize" eeimg="1">
+高度的相同区域。下面是我们的视口和像素网格的样子：
+
+![](https://s2.loli.net/2023/11/09/Jokfht3sVRIuWHc.png)
+
+在这个图中，我们有视口————一个
+<img src="https://www.zhihu.com/equation?tex=7\times5" alt="7\times5" class="ee_img tr_noresize" eeimg="1">
+分辨率图像的像素网格，视口左上角的点
+<img src="https://www.zhihu.com/equation?tex=Q" alt="Q" class="ee_img tr_noresize" eeimg="1">
+，像素
+<img src="https://www.zhihu.com/equation?tex=P_{(0,0)}" alt="P_{(0,0)}" class="ee_img tr_noresize" eeimg="1">
+的位置，视口向量
+<img src="https://www.zhihu.com/equation?tex=V_u" alt="V_u" class="ee_img tr_noresize" eeimg="1">
+（`viewport_u`），视口向量
+<img src="https://www.zhihu.com/equation?tex=V_v" alt="V_v" class="ee_img tr_noresize" eeimg="1">
+（`viewport_v`），以及像素增量向量
+<img src="https://www.zhihu.com/equation?tex=\delta u" alt="\delta u" class="ee_img tr_noresize" eeimg="1">
+和
+<img src="https://www.zhihu.com/equation?tex=\delta v" alt="\delta v" class="ee_img tr_noresize" eeimg="1">
+。
+
+基于所有这些信息，这里是实现摄像机的代码。我们将构建一个函数`ray_color(const ray& r)`，它返回给定场景光线的颜色————现在我们将其设置为始终返回黑色。
+
+```cpp
+//main.cc
+#include "color.h"
+#include "ray.h"
+#include "vec3.h"
+
+#include <iostream>
+
+color ray_color(const ray& r) {
+    return color(0,0,0);
+}
+
+int main() {
+
+    // 图像
+
+    auto aspect_ratio = 16.0 / 9.0;
+    int image_width = 400;
+
+    // 计算图像高度，并确保其至少为1
+    int image_height = static_cast<int>(image_width / aspect_ratio);
+    image_height = (image_height < 1) ? 1 : image_height;
+
+    // 摄像机
+
+    auto focal_length = 1.0;
+    auto viewport_height = 2.0;
+    auto viewport_width = viewport_height * (static_cast<double>(image_width)/image_height);
+    auto camera_center = point3(0, 0, 0);
+
+    // 计算横向和纵向视口边缘的矢量
+    auto viewport_u = vec3(viewport_width, 0, 0);
+    auto viewport_v = vec3(0, -viewport_height, 0);
+
+    // 计算像素间的水平和垂直三角矢量
+    auto pixel_delta_u = viewport_u / image_width;
+    auto pixel_delta_v = viewport_v / image_height;
+
+    // 计算左上角像素的位置
+    auto viewport_upper_left = camera_center
+                             - vec3(0, 0, focal_length) - viewport_u/2 - viewport_v/2;
+    auto pixel00_loc = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v);
+
+    // 渲染
+
+    std::cout << "P3\n" << image_width << " " << image_height << "\n255\n";
+
+    for (int j = 0; j < image_height; ++j) {
+        std::clog << "\rScanlines remaining: " << (image_height - j) << ' ' << std::flush;
+        for (int i = 0; i < image_width; ++i) {
+            auto pixel_center = pixel00_loc + (i * pixel_delta_u) + (j * pixel_delta_v);
+            auto ray_direction = pixel_center - camera_center;
+            ray r(camera_center, ray_direction);
+
+            color pixel_color = ray_color(r);
+            write_color(std::cout, pixel_color);
+        }
+    }
+
+    std::clog << "\rDone.                 \n";
+}
+```
+
+请注意，在上面的代码中，我没有将`ray_direction`设置为单位向量，因为我认为不这样做可以使代码更简单且略微提高一点速度。
+
+现在我们将填充`ray_color(ray)`函数以实现一个简单的渐变。这个函数将根据y坐标的高度（在将光线方向缩放到单位长度后，
+<img src="https://www.zhihu.com/equation?tex=−1.0<y<1.0" alt="−1.0<y<1.0" class="ee_img tr_noresize" eeimg="1">
+）线性混合白色和蓝色。因为我们是在标准化向量后查看y的高度，你会注意到除了垂直渐变之外，颜色中还有水平渐变。
+
+我将使用一个标准的图形学技巧来线性缩放
+<img src="https://www.zhihu.com/equation?tex=0.0≤a≤1.0" alt="0.0≤a≤1.0" class="ee_img tr_noresize" eeimg="1">
+。当
+<img src="https://www.zhihu.com/equation?tex=a=1.0" alt="a=1.0" class="ee_img tr_noresize" eeimg="1">
+时，我想要蓝色。当
+<img src="https://www.zhihu.com/equation?tex=a=0.0" alt="a=0.0" class="ee_img tr_noresize" eeimg="1">
+时，我想要白色。在两者之间，我想要一个混合色。这形成了一个“线性混合(*linear blend*)”或“线性插值(*linear interpolation*)”。这通常被称为两个值之间的*lerp*。*lerp*总是以下面的形式表示：
+
+
+<img src="https://www.zhihu.com/equation?tex=
+blendedValue = (1-a)\cdot startValue + a\cdot endValue" alt="
+blendedValue = (1-a)\cdot startValue + a\cdot endValue" class="ee_img tr_noresize" eeimg="1">
+
+
+其中
+<img src="https://www.zhihu.com/equation?tex=a" alt="a" class="ee_img tr_noresize" eeimg="1">
+从0变成1。
+
+综合以上的信息，我们得到了以下结果：
+```cpp
+//main.cc
+#include "color.h"
+#include "ray.h"
+#include "vec3.h"
+
+#include <iostream>
+
+color ray_color(const ray& r) {
+    vec3 unit_direction = unit_vector(r.direction());
+    auto a = 0.5*(unit_direction.y() + 1.0);
+    return (1.0-a)*color(1.0, 1.0, 1.0) + a*color(0.5, 0.7, 1.0);
+}
+
+...
+```
+
+由此，可以生成以下的图像：
+![](https://s2.loli.net/2023/11/09/aRtw1HyUpiOYrqd.png)
+
+# 5. 添加球体
