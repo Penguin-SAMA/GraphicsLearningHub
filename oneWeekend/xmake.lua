@@ -2,6 +2,7 @@ add_rules("mode.debug", "mode.release")
 
 target("oneWeekend")
 set_kind("binary")
+set_languages("c++17")
 add_files("src/*.cpp")
 
 on_run(function(target)

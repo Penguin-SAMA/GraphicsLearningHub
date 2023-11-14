@@ -4,7 +4,7 @@
 # REQUIRE: clang-format 3.5
 # C++ format configuration
 Language: Cpp
- 
+
 # REQUIRE: clang-format 3.3
 #! The extra indent or outdent of access modifiers, e.g. public:.
 AccessModifierOffset: -4
@@ -14,7 +14,7 @@ AllowAllParametersOfDeclarationOnNextLine: true
 AllowShortIfStatementsOnASingleLine: WithoutElse
 #! Indent case labels one level from the switch statement.
 IndentCaseLabels: true
- 
+
 # REQUIRE: clang-format 3.4
 #! If true, always break before multiline string literals.
 AlwaysBreakBeforeMultilineStrings: false
@@ -24,7 +24,7 @@ AlwaysBreakTemplateDeclarations: Yes
 Cpp11BracedListStyle: true
 #! The SpacesInAnglesStyle to use for template argument lists.
 SpacesInAngles: Never
- 
+
 # REQUIRE: clang-format 3.5
 #! If true, horizontally align operands of binary and ternary expressions.
 AlignOperands: AlignAfterOperator
@@ -36,18 +36,18 @@ AllowShortFunctionsOnASingleLine: Empty
 SpaceAfterCStyleCast: false
 #! Defines in which cases to put a space before opening parentheses.
 SpaceBeforeParens: Custom
- 
+
 # REQUIRE: clang-format 3.6
 #! If true, short case labels will be contracted to a single line.
 AllowShortCaseLabelsOnASingleLine: false
 #! The way to wrap binary operators.
 BreakBeforeBinaryOperators: NonAssignment
- 
+
 # REQUIRE: clang-format 3.7
 #! Control of trailing comments.
 # AlignTrailingComments:
-    # Kind: Always
-    # OverEmptyLines: 0
+# Kind: Always
+# OverEmptyLines: 0
 #! If true, while (true) continue; can be put on a single line.
 AllowShortLoopsOnASingleLine: true
 #! If false, a function call’s arguments will either be all on the same line or will have one line each.
@@ -61,7 +61,7 @@ BreakBeforeTernaryOperators: true
 #! The column limit.
 ColumnLimit: 96
 #! A regular expression that describes comments with special meaning, which should not be split into lines or otherwise changed.
-CommentPragmas: '^(!<)? IWYU pragma:'
+CommentPragmas: "^(!<)? IWYU pragma:"
 #! The number of characters to use for indentation of constructor initializer lists as well as inheritance lists.
 ConstructorInitializerIndentWidth: 4
 #! Indent width for line continuations.
@@ -79,9 +79,9 @@ IndentWrappedFunctionNames: true
 #! If true, the empty line at the start of blocks is kept.
 KeepEmptyLinesAtTheStartOfBlocks: false
 #! A regular expression matching macros that start a block.
-MacroBlockBegin: ''
+MacroBlockBegin: ""
 #! A regular expression matching macros that end a block.
-MacroBlockEnd: ''
+MacroBlockEnd: ""
 #! The maximum number of consecutive empty lines to keep.
 MaxEmptyLinesToKeep: 1
 #! The indentation used for namespaces.
@@ -106,56 +106,56 @@ Standard: Latest
 TabWidth: 4
 #! The way to use tab characters in the resulting file.
 UseTab: Never
- 
+
 # REQUIRE: clang-format 3.8
 #! If true, horizontally aligns arguments after an open bracket.
 AlignAfterOpenBracket: AlwaysBreak
 #! Style of aligning consecutive assignments.
 AlignConsecutiveAssignments:
-    Enabled: true
-    AcrossEmptyLines: false
-    AcrossComments: false
-    AlignCompound: true
-    PadOperators: true
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: false
+  AlignCompound: true
+  PadOperators: true
 #! Style of aligning consecutive declarations.
 AlignConsecutiveDeclarations:
-    Enabled: true
-    AcrossEmptyLines: false
-    AcrossComments: false
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: false
 #! The function declaration return type breaking style to use.
 AlwaysBreakAfterReturnType: None
 #! Control of individual brace wrapping cases.
 BraceWrapping:
-    AfterCaseLabel: false
-    AfterClass: false
-    AfterControlStatement: Never
-    AfterEnum: false
-    AfterFunction: false
-    AfterNamespace: false
-    AfterStruct: false
-    AfterUnion: false
-    AfterExternBlock: false
-    BeforeCatch: false
-    BeforeElse: false
-    BeforeLambdaBody: false
-    BeforeWhile: false
-    IndentBraces: true
-    SplitEmptyFunction: false
-    SplitEmptyRecord: false
-    SplitEmptyNamespace: true
+  AfterCaseLabel: false
+  AfterClass: false
+  AfterControlStatement: Never
+  AfterEnum: false
+  AfterFunction: false
+  AfterNamespace: false
+  AfterStruct: false
+  AfterUnion: false
+  AfterExternBlock: false
+  BeforeCatch: false
+  BeforeElse: false
+  BeforeLambdaBody: false
+  BeforeWhile: false
+  IndentBraces: true
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+  SplitEmptyNamespace: true
 #! If true, clang-format will attempt to re-flow comments. That is it will touch a comment and reflow long comments into new lines, trying to obey the ColumnLimit.
 ReflowComments: true
 #! Controls if and how clang-format will sort #includes.
 SortIncludes: Never
- 
+
 # REQUIRE: clang-format 3.9
 #! Allow breaking string literals when formatting.
 BreakStringLiterals: true
- 
+
 # REQUIRE: clang-format 4
 #! If true, a space will be inserted after the ‘template’ keyword.
 SpaceAfterTemplateKeyword: true
- 
+
 # REQUIRE: clang-format 5
 #! Options for aligning backslashes in escaped newlines.
 AlignEscapedNewlines: Left
@@ -168,13 +168,13 @@ FixNamespaceComments: true
 #! Controls if and how clang-format will sort using declarations.
 # SortUsingDeclarations: LexicographicNumeric
 SortUsingDeclarations: true
- 
+
 # REQUIRE: clang-format 6
 #! Dependent on the value, multiple #include blocks can be sorted as one and divided based on category.
 IncludeBlocks: Regroup
 #! The preprocessor directive indenting style to use.
 IndentPPDirectives: None
- 
+
 # REQUIRE: clang-format 7
 #! The inheritance list style to use.
 BreakInheritanceList: BeforeComma
@@ -186,18 +186,18 @@ SpaceBeforeCtorInitializerColon: true
 SpaceBeforeInheritanceColon: true
 #! If false, spaces will be removed before range-based for loop colon.
 SpaceBeforeRangeBasedForLoopColon: true
- 
+
 # REQUIRE: clang-format 8
 #! A vector of macros that should be interpreted as complete statements.
 StatementMacros:
-    - Q_UNUSED
- 
+  - Q_UNUSED
+
 # REQUIRE: clang-format 9
 #! Style of aligning consecutive macro definitions.
 AlignConsecutiveMacros:
-    Enabled: true
-    AcrossEmptyLines: false
-    AcrossComments: false
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: false
 #! If a function call or braced initializer list doesn’t fit on a line, allow putting all arguments onto the next line, even if BinPackArguments is false.
 AllowAllArgumentsOnNextLine: true
 #! Dependent on the value, auto lambda []() { return 0; } can be put on a single line.
@@ -208,7 +208,7 @@ NamespaceMacros: []
 SpaceAfterLogicalNot: false
 #! A vector of macros that should be interpreted as type declarations instead of as function calls.
 TypenameMacros: []
- 
+
 # REQUIRE: clang-format 10
 #! Indent goto labels.
 IndentGotoLabels: false
@@ -218,26 +218,26 @@ SpaceBeforeSquareBrackets: false
 SpaceInEmptyBlock: false
 #! If true, spaces will be inserted around if/for/switch/while conditions.
 SpacesInConditionalStatement: false
- 
+
 # REQUIRE: clang-format 11
 #! Style of aligning consecutive bit fields.
 AlignConsecutiveBitFields:
-    Enabled: true
-    AcrossEmptyLines: true
-    AcrossComments: false
+  Enabled: true
+  AcrossEmptyLines: true
+  AcrossComments: false
 #! Allow short enums on a single line.
 AllowShortEnumsOnASingleLine: false
 #! Indent case label blocks one level from the case label.
 IndentCaseBlocks: false
 #! IndentExternBlockStyle is the type of indenting of extern blocks.
 IndentExternBlock: NoIndent
- 
+
 # REQUIRE: clang-format 12
 #! A vector of strings that should be interpreted as attributes/qualifiers instead of identifiers. This can be useful for language extensions or static analyzer annotations.
 AttributeMacros:
-    - __capability
-    - __output
-    - __ununsed
+  - __capability
+  - __output
+  - __ununsed
 #! The BitFieldColonSpacingStyle to use for bitfields.
 BitFieldColonSpacing: Both
 #! The concept declaration style to use.
@@ -250,8 +250,8 @@ SpaceAroundPointerQualifiers: Default
 SpaceBeforeCaseColon: false
 #! Macros which are ignored in front of a statement, as if they were an attribute. So that they are not parsed as identifier, for example for Qts emit.
 StatementAttributeLikeMacros:
-    - emit
- 
+  - emit
+
 # REQUIRE: clang-format 13
 #! if not None, when using initialization for an array of structs aligns the fields into columns.
 AlignArrayOfStructures: Left
@@ -271,9 +271,9 @@ ReferenceAlignment: Right
 ShortNamespaceLines: 0
 #! How many spaces are allowed at the start of a line comment.
 SpacesInLineCommentPrefix:
-    Minimum: 1
-    Maximum: -1
- 
+  Minimum: 1
+  Maximum: -1
+
 # REQUIRE: clang-format 14
 #! The pack constructor initializers style to use.
 PackConstructorInitializers: Never
@@ -293,16 +293,16 @@ QualifierAlignment: Leave
 SeparateDefinitionBlocks: Always
 #! Control of individual space before parentheses.
 SpaceBeforeParensOptions:
-    AfterControlStatements: true
-    AfterForeachMacros: true
-    AfterFunctionDeclarationName: false
-    AfterFunctionDefinitionName: false
-    AfterIfMacros: true
-    AfterOverloadedOperator: false
-    AfterRequiresInClause: false
-    AfterRequiresInExpression: true
-    BeforeNonEmptyParentheses: false
- 
+  AfterControlStatements: true
+  AfterForeachMacros: true
+  AfterFunctionDeclarationName: false
+  AfterFunctionDefinitionName: false
+  AfterIfMacros: true
+  AfterOverloadedOperator: false
+  AfterRequiresInClause: false
+  AfterRequiresInExpression: true
+  BeforeNonEmptyParentheses: false
+
 # REQUIRE: clang-format 15
 #! Indent the requires clause in a template. This only applies when RequiresClausePosition is OwnLine, or WithFollowing.
 IndentRequiresClause: true
@@ -310,7 +310,6 @@ IndentRequiresClause: true
 InsertBraces: false
 #! The position of the requires clause.
 RequiresClausePosition: OwnLine
- 
 # REQUIRE: clang-format 16
 #! Break after a group of C++11 attributes before a function declaration/definition name.
 # BreakAfterAttributes: Never
@@ -327,4 +326,3 @@ RequiresClausePosition: OwnLine
 # LineEnding: CRLF
 #! The indentation used for requires expression bodies.
 # RequiresExpressionIndentation: OuterScope
-...

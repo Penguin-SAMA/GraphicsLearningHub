@@ -480,6 +480,8 @@ color ray_color(const ray& r) {
 
 让我们向光线追踪器添加一个对象。人们经常在光线追踪器中使用球体，因为计算光线是否击中球体相对简单。
 
+# 5. 添加球体
+
 ## 5.1 光线-球体相交
 
 以原点为圆心、半径为$$r$$的球体方程是一个重要的数学方程：
@@ -691,7 +693,7 @@ class hittable {
 #endif
 ```
 
-And here’s the sphere:
+这是球体的代码：
 
 ```cpp
 //sphere.h
@@ -740,3 +742,405 @@ class sphere : public hittable {
 
 ## 6.4 正面和背面
 
+关于法线的第二个设计决策是它们是否应该总是指向外部。目前，找到的法线总是从中心指向交点的方向（法线指向外部）。如果光线从外部与球体相交，那么法线会与光线相反。如果光线从内部与球体相交，那么法线（总是指向外部）会与光线同向。另一种方式是，我们可以让法线总是与光线相反。如果光线在球体外部，法线会指向外部，但如果光线在球体内部，法线会指向内部。
+
+![img](./assets/fig-1.07-normal-sides.jpg)
+
+我们需要选择其中一种可能性，因为我们最终想确定光线是从表面的哪一侧射入的。这对于在每一侧呈现不同的对象很重要，比如双面纸上的文字，或者像玻璃球这样有内外之分的对象。
+
+如果我们决定让法向量总是指向外部，那么我们需要确定光线在着色时处于物体的哪一侧。我们可以通过比较光线与法线来弄清楚这一点。**如果光线和法线朝相同方向，那么光线就在物体内部；如果光线和法线朝相反方向，那么光线就在物体外部。**这可以通过计算两个向量的点积来确定，**如果它们的点积为正，那么光线就在球体内部。**
+
+```cpp
+if (dot(ray_direction, outward_normal) > 0.0) {
+    // 光线在球体内侧
+    ...
+} else {
+    // 光线在球体外侧
+    ...
+}
+```
+
+如果我们决定让法线始终指向光线，我们将无法使用点积来确定光线位于表面的哪一侧。相反，我们需要存储该信息：
+
+```cpp
+bool front_face;
+if (dot(ray_direction, outward_normal) > 0.0) {
+    // 光线在球体内测
+    normal = -outward_normal;
+    front_face = false;
+} else {
+    // 光线在球体外侧
+    normal = outward_normal;
+    front_face = true;
+}
+```
+
+我们可以设置使法线总是从表面“向外”指，或者总是指向入射光线的反方向。这个决定取决于你是想在几何相交的时候确定表面的哪一侧，还是在着色的时候确定。在这本书中，我们有的材料类型比几何类型多，所以我们选择较少的工作量，在几何相交时就做出决定。这纯粹是个人偏好的问题，在文献中你会看到两种实现方式。
+
+我们在 `hit_record` 类中添加一个布尔变量 `front_face`。我们还将添加一个函数来为我们解决这个计算：`set_face_normal()`。为了方便起见，我们假设传递给新的 `set_face_normal()` 函数的向量是单位长度的。我们总是可以明确地规范化这个参数，但如果几何代码这样做会更高效，因为当你更了解特定几何形状时，通常会更容易。
+
+```cpp
+// hittable.h
+class hit_record {
+  public:
+    point3 p;
+    vec3 normal;
+    double t;
+    bool front_face;
+
+    void set_face_normal(const ray& r, const vec3& outward_normal) {
+        // 设置命中记录的法向量
+        // NOTE: outward_normal 假定为单位长度
+
+        front_face = dot(r.direction(), outward_normal) < 0;
+        normal = front_face ? outward_normal : -outward_normal;
+    }
+};
+```
+
+然后，我们将表面侧判定添加到该类中：
+
+```cpp
+// sphere.h
+class sphere : public hittable {
+  public:
+    ...
+    bool hit(const ray& r, double ray_tmin, double ray_tmax, hit_record& rec) const {
+        ...
+
+        rec.t = root;
+        rec.p = r.at(rec.t);
+        vec3 outward_normal = (rec.p - center) / radius;
+        rec.set_face_normal(r, outward_normal);
+
+        return true;
+    }
+    ...
+};
+```
+
+## 6.5 可命中对象列表
+
+我们有一个称为`hittable`的通用对象，光线可以与它相交。我们现在添加一个存储命中表列表的类，命名为`hittable_list`：
+
+```cpp
+// hittable_list.h
+#ifndef HITTABLE_LIST_H
+#define HITTABLE_LIST_H
+
+#include "hittable.h"
+
+#include <memory>
+#include <vector>
+
+using std::shared_ptr;
+using std::make_shared;
+
+class hittable_list : public hittable {
+  public:
+    std::vector<shared_ptr<hittable>> objects;
+
+    hittable_list() {}
+    hittable_list(shared_ptr<hittable> object) { add(object); }
+
+    void clear() { objects.clear(); }
+
+    void add(shared_ptr<hittable> object) {
+        objects.push_back(object);
+    }
+
+    bool hit(const ray& r, double ray_tmin, double ray_tmax, hit_record& rec) const override {
+        hit_record temp_rec;
+        bool hit_anything = false;
+        auto closest_so_far = ray_tmax;
+
+        for (const auto& object : objects) {
+            if (object->hit(r, ray_tmin, closest_so_far, temp_rec)) {
+                hit_anything = true;
+                closest_so_far = temp_rec.t;
+                rec = temp_rec;
+            }
+        }
+
+        return hit_anything;
+    }
+};
+
+#endif
+```
+
+## 6.6 一些新的C++特性
+
+`hittable_list`类代码使用两个 C++ 的新特性，如果您不是 C++ 程序员，这两个功能可能会让您感到困惑：`vector`和`shared_ptr`。
+
+`shared_ptr<type>` 是指向某个已分配类型的指针，具有引用计数语义。每次将其值分配给另一个共享指针（通常使用简单的分配）时，引用计数都会增加。当共享指针超出范围（例如在块或函数的末尾）时，引用计数就会递减。一旦计数变为零，该对象就会被安全删除。
+
+通常，共享指针首先使用新分配的对象进行初始化，如下所示：
+
+```cpp
+shared_ptr<double> double_ptr = make_shared<double>(0.37);
+shared_ptr<vec3>   vec3_ptr   = make_shared<vec3>(1.414214, 2.718281, 1.618034);
+shared_ptr<sphere> sphere_ptr = make_shared<sphere>(point3(0,0,0), 1.0);
+```
+
+`make_shared<thing>(thing_constructor_params ...)`使用构造函数参数分配` thing `类型的新实例。它返回一个`shared_ptr<thing>`。
+
+由于类型可以通过` make_shared<type>(...) `的返回类型自动推导，因此可以使用 C++ 的` auto `类型说明符更简单地表达上述代码：
+
+```cpp
+auto double_ptr = make_shared<double>(0.37);
+auto vec3_ptr   = make_shared<vec3>(1.414214, 2.718281, 1.618034);
+auto sphere_ptr = make_shared<sphere>(point3(0,0,0), 1.0);
+```
+
+我们将在代码中使用共享指针，因为它允许多个几何图形共享一个公共实例（例如，一堆都使用相同颜色材质的球体），并且因为它使内存管理自动化并且更容易推理。
+
+`std::shared_ptr`包含在` <memory> `头文件中。
+
+您可能不熟悉的第二个 C++ 功能是` std::vector`。这是任意类型的通用类数组集合。上面，我们使用了指向` hittable `的指针集合。` std::vector `随着添加更多值而自动增长：`objects.push_back(object) `将一个值添加到` std::vector `成员变量对象的末尾。
+
+`std::vector `包含在` <vector> `头文件中。
+
+最后，上面`hittable_list.h`中的` using `语句告诉编译器我们将从` std `库获取` shared_ptr `和` make_shared`，因此我们不需要每次引用它们时都在它们前面加上 `std:: `前缀。
+
+## 6.7 常用常量和实用函数
+
+我们需要一些数学常量，可以在自己的头文件中方便地定义它们。现在我们只需要无穷大，但我们还将在其中添加我们自己的` pi `定义，稍后我们将会用到它。` pi `没有标准的可移植定义，因此我们只需为其定义自己的常量。我们将在` rtweekend.h`（我们的通用主头文件）中添加常见的有用常量和未来会用到的实用函数。
+
+```cpp
+// rtweekend.h
+#ifndef RTWEEKEND_H
+#define RTWEEKEND_H
+
+#include <cmath>
+#include <limits>
+#include <memory>
+
+
+// Usings
+
+using std::shared_ptr;
+using std::make_shared;
+using std::sqrt;
+
+// 常量
+
+const double infinity = std::numeric_limits<double>::infinity();
+const double pi = 3.1415926535897932385;
+
+// 实用函数
+
+inline double degrees_to_radians(double degrees) {
+    return degrees * pi / 180.0;
+}
+
+// 通用头文件
+
+#include "ray.h"
+#include "vec3.h"
+
+#endif
+```
+
+这是新的`main.cc`:
+
+```cpp
+// main.cc
+#include "rtweekend.h"
+
+#include "color.h"
+#include "hittable.h"
+#include "hittable_list.h"
+#include "sphere.h"
+
+#include <iostream>
+
+double hit_sphere(const point3& center, double radius, const ray& r) {
+    ...
+}
+
+color ray_color(const ray& r, const hittable& world) {
+    hit_record rec;
+    if (world.hit(r, 0, infinity, rec)) {
+        return 0.5 * (rec.normal + color(1,1,1));
+    }
+
+    vec3 unit_direction = unit_vector(r.direction());
+    auto a = 0.5*(unit_direction.y() + 1.0);
+    return (1.0-a)*color(1.0, 1.0, 1.0) + a*color(0.5, 0.7, 1.0);
+}
+
+int main() {
+
+    // Image
+
+    auto aspect_ratio = 16.0 / 9.0;
+    int image_width = 400;
+
+    // Calculate the image height, and ensure that it's at least 1.
+    int image_height = static_cast<int>(image_width / aspect_ratio);
+    image_height = (image_height < 1) ? 1 : image_height;
+
+    // World
+
+    hittable_list world;
+
+    world.add(make_shared<sphere>(point3(0,0,-1), 0.5));
+    world.add(make_shared<sphere>(point3(0,-100.5,-1), 100));
+
+    // Camera
+
+    auto focal_length = 1.0;
+    auto viewport_height = 2.0;
+    auto viewport_width = viewport_height * (static_cast<double>(image_width)/image_height);
+    auto camera_center = point3(0, 0, 0);
+
+    // Calculate the vectors across the horizontal and down the vertical viewport edges.
+    auto viewport_u = vec3(viewport_width, 0, 0);
+    auto viewport_v = vec3(0, -viewport_height, 0);
+
+    // Calculate the horizontal and vertical delta vectors from pixel to pixel.
+    auto pixel_delta_u = viewport_u / image_width;
+    auto pixel_delta_v = viewport_v / image_height;
+
+    // Calculate the location of the upper left pixel.
+    auto viewport_upper_left = camera_center
+                             - vec3(0, 0, focal_length) - viewport_u/2 - viewport_v/2;
+    auto pixel00_loc = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v);
+
+    // Render
+
+    std::cout << "P3\n" << image_width << ' ' << image_height << "\n255\n";
+
+    for (int j = 0; j < image_height; ++j) {
+        std::clog << "\rScanlines remaining: " << (image_height - j) << ' ' << std::flush;
+        for (int i = 0; i < image_width; ++i) {
+            auto pixel_center = pixel00_loc + (i * pixel_delta_u) + (j * pixel_delta_v);
+            auto ray_direction = pixel_center - camera_center;
+            ray r(camera_center, ray_direction);
+
+            color pixel_color = ray_color(r, world);
+            write_color(std::cout, pixel_color);
+        }
+    }
+
+    std::clog << "\rDone.                 \n";
+}
+```
+
+这产生的图片实际上只是球体位置及其表面法线的可视化。这通常是查看几何模型的任何缺陷或特定特征的好方法。
+
+## 6.8 `Interval`类
+
+在继续之前，我们将实现一个`interval`类来管理具有最小值和最大值的实值间隔。随着我们的继续，我们最终会经常使用这个类。
+
+```cpp
+// interval.h
+#ifndef INTERVAL_H
+#define INTERVAL_H
+
+class interval {
+  public:
+    double min, max;
+
+    interval() : min(+infinity), max(-infinity) {} // Default interval is empty
+
+    interval(double _min, double _max) : min(_min), max(_max) {}
+
+    bool contains(double x) const {
+        return min <= x && x <= max;
+    }
+
+    bool surrounds(double x) const {
+        return min < x && x < max;
+    }
+
+    static const interval empty, universe;
+};
+
+const static interval empty   (+infinity, -infinity);
+const static interval universe(-infinity, +infinity);
+
+#endif
+```
+
+```cpp
+// rtweekend.h
+// Common Headers
+
+#include "interval.h"
+#include "ray.h"
+#include "vec3.h"
+```
+
+```cpp
+//hittable.h
+class hittable {
+  public:
+    ...
+    virtual bool hit(const ray& r, interval ray_t, hit_record& rec) const = 0;
+};
+```
+
+```cpp
+// hittable_list.h
+class hittable_list : public hittable {
+  public:
+    ...
+    bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
+        hit_record temp_rec;
+        bool hit_anything = false;
+        auto closest_so_far = ray_t.max;
+
+        for (const auto& object : objects) {
+            if (object->hit(r, interval(ray_t.min, closest_so_far), temp_rec)) {
+                hit_anything = true;
+                closest_so_far = temp_rec.t;
+                rec = temp_rec;
+            }
+        }
+
+        return hit_anything;
+    }
+    ...
+};
+```
+
+```cpp
+// sphere.h
+class sphere : public hittable {
+  public:
+    ...
+    bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
+        ...
+
+        // Find the nearest root that lies in the acceptable range.
+        auto root = (-half_b - sqrtd) / a;
+        if (!ray_t.surrounds(root)) {
+            root = (-half_b + sqrtd) / a;
+            if (!ray_t.surrounds(root))
+                return false;
+        }
+        ...
+    }
+    ...
+};
+```
+
+```cpp
+// main.cc
+...
+color ray_color(const ray& r, const hittable& world) {
+    hit_record rec;
+    if (world.hit(r, interval(0, infinity), rec)) {
+        return 0.5 * (rec.normal + color(1,1,1));
+    }
+
+    vec3 unit_direction = unit_vector(r.direction());
+    auto a = 0.5*(unit_direction.y() + 1.0);
+    return (1.0-a)*color(1.0, 1.0, 1.0) + a*color(0.5, 0.7, 1.0);
+}
+...
+```
+
+# 7. 将摄像机代码移入自己的类中
