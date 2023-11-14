@@ -1,6 +1,8 @@
 #ifndef INTERVAL_H
 #define INTERVAL_H
 
+#include "constants.h"
+
 class interval {
 public:
     double min, max;

@@ -2,7 +2,6 @@
 #define RTWEEKEND_H
 
 #include <cmath>
-#include <limits>
 #include <memory>
 
 // Usings
@@ -13,8 +12,7 @@ using std::sqrt;
 
 // 常量
 
-const double infinity = std::numeric_limits<double>::infinity();
-const double pi       = 3.1415926535897932385;
+const double pi = 3.1415926535897932385;
 
 // 实用函数
 
@@ -24,6 +22,7 @@ inline double degrees_to_radians(double degrees) {
 
 // 常用头文件
 
+#include "constants.h"
 #include "interval.h"
 #include "ray.h"
 #include "vec3.h"
