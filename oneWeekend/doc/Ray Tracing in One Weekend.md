@@ -1,10 +1,14 @@
+![Ray Tracing in OneWeekend v4.0.0 (中文翻译)](https://pic1.zhimg.com/70/v2-b88e5b56376a3e3e9dbb1a21cc2370d6_1440w.image?source=172ae18b&biz_tag=Post)
+
+# Ray Tracing in OneWeekend v4.0.0 (中文翻译)
+
 > 声明：此文章仅供个人学习，由于英文水平有限，本文为我个人基于翻译插件加以优化所得，会尽可能还原原意。如果各位有更好的建议意见可以在评论区中提出。
 # 1. 概述
 略。
 # 2. 输出一个图像
 ## 2.1 PPM图像格式
 每当启动渲染器时，您都需要一种查看图像的方法。最直接的方法就是将其写入文件。问题是，格式有很多。其中许多都很复杂。我总是从纯文本 ppm 文件开始。这是维基百科上的一个很好的描述：
-![img](https://raytracing.github.io/images/fig-1.01-ppm.jpg)
+![*PPM 示例*](https://raytracing.github.io/images/fig-1.01-ppm.jpg)
 让我们编写一些 C++ 代码来输出这样的内容：
 
 ```cpp
@@ -55,7 +59,7 @@ build\Release\inOneWeekend.exe > image.ppm
 build/inOneWeekend > image.ppm
 ```
 打开输出文件（在Mac 上的 ToyViewer 中，但如果您的查看器不支持，请在您最喜欢的图像查看器或者 Google搜索“ppm viewer”中尝试）显示以下结果：
-![img](https://raytracing.github.io/images/img-1.01-first-ppm-image.png)
+![*第一张 PPM 图像*](https://raytracing.github.io/images/img-1.01-first-ppm-image.png)
 好极了！这就是图形学中的“hello world”。如果您的图像看起来不是这样，请在文本编辑器中打开输出文件，看看它是什么样子。它应该这样开始：
 
 ```txt
@@ -295,7 +299,7 @@ int main() {
 #  4. 光线、简易相机以及背景
 ## 4.1 光线类
 所有光线追踪器都拥有的是光线类和沿着光线看到的颜色的计算。让我们将射线视为一个函数$$ P(t) = A + t\vec{b} $$。这里的$$P$$是沿着三维空间中某条直线的三维位置。其中$$A$$是射线原点，$$\vec{b}$$是射线方向，$$t$$是类型为`double`的实数。输入不同的$$t$$值，$$P(t)$$ 就会沿着光线移动这个点。如果您输入的是负数$$t$$，就可以在3D线上的任何位置移动。如果是正的$$t$$，您只能得到A前面的部分，这通常被称为半线(*half-line*)或光线(*ray*)。
-![img](https://raytracing.github.io/images/fig-1.02-lerp.jpg)
+![*线性插值*](https://raytracing.github.io/images/fig-1.02-lerp.jpg)
 我们可以将ray的概念表示为一个class，并且将$$P(t)$$用函数`ray::at(t)`来表示：
 
 ```cpp
@@ -367,7 +371,7 @@ auto viewport_width = viewport_height * (static_cast<double>(image_width)/image_
 
 为了简化问题，我们将摄像机中心设置在$$(0,0,0)$$位置。我们还将设置y轴向上，x轴向右，负z轴指向观察方向。（这通常被称为右手坐标系(*right-handed coordinates*)。）
 
-![img](https://raytracing.github.io/images/fig-1.03-cam-geom.jpg)
+![*相机几何形状*](https://raytracing.github.io/images/fig-1.03-cam-geom.jpg)
 
 现在是不可避免的棘手部分。虽然我们的三维空间有上述约定，但这与我们的图像坐标相冲突，我们希望将第一个像素放在左上方，然后一直向下直到右下方的最后一个像素。这意味着我们的图像坐标Y轴是倒置的，即Y轴在图像上向下递增。
 
@@ -375,7 +379,7 @@ auto viewport_width = viewport_height * (static_cast<double>(image_width)/image_
 
 我们的像素网格将以像素间距的一半嵌入视口边缘。通过这种方式，我们的视口区域被均匀地划分为宽度$$\times$$高度的相同区域。下面是我们的视口和像素网格的样子：
 
-![img](https://raytracing.github.io/images/fig-1.04-pixel-grid.jpg)
+![*视口和像素网格*](https://raytracing.github.io/images/fig-1.04-pixel-grid.jpg)
 
 在这个图中，我们有视口————一个$$7\times5$$分辨率图像的像素网格，视口左上角的点$$Q$$，像素$$P_{(0,0)}$$的位置，视口向量$$V_u$$（`viewport_u`），视口向量$$V_v$$（`viewport_v`），以及像素增量向量$$\delta u$$和$$\delta v$$。
 
@@ -476,7 +480,7 @@ color ray_color(const ray& r) {
 ```
 
 由此，可以生成以下的图像：
-![img](https://raytracing.github.io/images/img-1.02-blue-to-white.png)
+![*取决于射线 Y 坐标的蓝到白渐变*](https://raytracing.github.io/images/img-1.02-blue-to-white.png)
 
 让我们向光线追踪器添加一个对象。人们经常在光线追踪器中使用球体，因为计算光线是否击中球体相对简单。
 
@@ -534,7 +538,7 @@ c=(A-C)\cdot(A-C)-r^2
 $$
 使用上述所有内容，你可以解出$$ t$$，但方程中有一个平方根部分，可以是正的（意味着有两个实数解），负的（意味着没有实数解），或零（意味着一个实数解）。在图形学中，代数几乎总是与几何直接相关。我们拥有的是：
 
-![img](https://raytracing.github.io/images/fig-1.05-ray-sphere.jpg)
+![*光线-球体相交结果*](https://raytracing.github.io/images/fig-1.05-ray-sphere.jpg)
 
 ## 5.2 创建我们的第一个光线追踪图像
 
@@ -563,7 +567,7 @@ color ray_color(const ray& r) {
 
 我们可以得到这个：
 
-![img](https://raytracing.github.io/images/img-1.03-red-sphere.png)
+![*一个简单的红色球体*](https://raytracing.github.io/images/img-1.03-red-sphere.png)
 
 现在这还缺少很多东西——比如阴影、反射光线以及多个物体——但我们已经完成了一半多的工作，比刚开始时要好很多！需要注意的一点是，我们通过解二次方程来测试射线是否与球相交，并查看是否存在解，但是$$ t $$的负值解也同样有效。如果你将球心改为$$ z=+1$$，你会得到完全相同的图片，因为这个解决方案并不区分相机前面的物体和相机后面的物体。这不是一个*feature*！我们接下来会解决这些问题。
 
@@ -581,7 +585,7 @@ color ray_color(const ray& r) {
 
 对于球体，向外法线是击中点减去中心的方向：
 
-![img](https://raytracing.github.io/images/fig-1.06-sphere-normal.jpg)
+![*球体表面法线几何形状*](https://raytracing.github.io/images/fig-1.06-sphere-normal.jpg)
 
 在地球上，这意味着从地球中心到你的向量垂直指向上方。现在让我们把这个加入到代码中，并进行着色。我们还没有任何灯光或类似的东西，所以就让我们通过颜色贴图来直观地展示法线。一个用于可视化法线的常见技巧（因为它简单且直观，假设$$\vec n$$是单位长度向量——则每个分量介于$$ -1 $$和$$ 1 $$之间）是将每个分量映射到从$$ 0 $$到$$ 1 $$的区间，然后将$$ (x, y, z) $$映射到 (红, 绿, 蓝)。对于法线，我们需要击中点(*hit point*)，而不仅仅是我们是否击中（这是我们目前正在计算的全部）。我们场景中只有一个球体，而且它直接在摄像机前方，所以我们还不用担心$$ t $$的负值。我们只假设最近的击中点（最小的$$ t$$）是我们想要的那个。这些代码的更改让我们能够计算并可视化$$\vec n$$：
 
@@ -613,6 +617,10 @@ color ray_color(const ray& r) {
     return (1.0-a)*color(1.0, 1.0, 1.0) + a*color(0.5, 0.7, 1.0);
 }
 `````
+
+这就产生了这张图：
+
+![*根据法向量着色的球体*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.04-normals-sphere.png)
 
 ## 6.2 简化光线—球相交代码
 
@@ -744,7 +752,7 @@ class sphere : public hittable {
 
 关于法线的第二个设计决策是它们是否应该总是指向外部。目前，找到的法线总是从中心指向交点的方向（法线指向外部）。如果光线从外部与球体相交，那么法线会与光线相反。如果光线从内部与球体相交，那么法线（总是指向外部）会与光线同向。另一种方式是，我们可以让法线总是与光线相反。如果光线在球体外部，法线会指向外部，但如果光线在球体内部，法线会指向内部。
 
-![img](./assets/fig-1.07-normal-sides.jpg)
+![*球体表面法线几何的可能方向*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.07-normal-sides.jpg)
 
 我们需要选择其中一种可能性，因为我们最终想确定光线是从表面的哪一侧射入的。这对于在每一侧呈现不同的对象很重要，比如双面纸上的文字，或者像玻璃球这样有内外之分的对象。
 
@@ -1030,6 +1038,8 @@ int main() {
 
 这产生的图片实际上只是球体位置及其表面法线的可视化。这通常是查看几何模型的任何缺陷或特定特征的好方法。
 
+![法线颜色球体与地面的渲染结果](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.05-normals-sphere-ground.png)
+
 ## 6.8 `Interval`类
 
 在继续之前，我们将实现一个`interval`类来管理具有最小值和最大值的实值间隔。随着我们的继续，我们最终会经常使用这个类。
@@ -1143,4 +1153,384 @@ color ray_color(const ray& r, const hittable& world) {
 ...
 ```
 
+## 6.9 笔者注——关于`Interval`类的一些改动
+
+笔者在自己尝试添加`interval`类时遇到了循环包含头文件的报错，虽然最后还是可以正常编译，但是这些报错看起来就是很不爽。由此，我添加了一个`constant.h`，并把`infinity`写进去来消除这些报错，如果读者有更好的建议欢迎发在评论区。
+
+```cpp
+// constant.h
+#ifndef CONSTANTS_H
+#define CONSTANTS_H
+
+#include <limits>
+
+const double infinity = std::numeric_limits<double>::infinity();
+
+#endif
+```
+
+然后在`rtweekend.h`中删掉`infinity`的定义，再包含`constant.h`即可。
+
 # 7. 将摄像机代码移入自己的类中
+
+在继续之前，现在是将我们的相机和场景渲染代码合并到一个新类中的好时机：`camera`类。`camera`类将负责两项重要工作：
+
+1. 构造光线并将其发送到世界中。
+2. 使用这些光线的结果来构建渲染图像。
+
+在这种重构中，我们将收集` ray_color() `函数以及主程序的图像、相机和渲染部分。新的`camera`类将包含两个公共方法`initialize()`和`render()`，以及两个私有方法`get_ray()`和`ray_color()`。
+
+最终，相机将遵循我们能想到的最简单的使用模式：它的默认构造是没有参数的，然后代码将通过简单赋值修改相机的公共变量，最后通过调用`initialize()`函数初始化一切。这种模式被选择是为了避免拥有者调用带有大量参数的构造函数或定义并调用一系列设置方法。相反，代码只需要设置它明确关心的内容。最后，我们可以让代码调用`initialize()`，或者只让相机在`render()`开始时自动调用这个函数。此处，我们将使用第二种方法。
+
+在`main`函数创建相机并设置默认值之后，它将调用`render()`方法。`render()`方法将为渲染准备相机，然后执行渲染循环。
+
+以下是我们新相机类的框架：
+
+```cpp
+// camera.h
+#ifndef CAMERA_H
+#define CAMERA_H
+
+#include "rtweekend.h"
+
+#include "color.h"
+#include "hittable.h"
+
+class camera {
+  public:
+    /* 这里是公共相机参数 */
+
+    void render(const hittable& world) {
+        ...
+    }
+
+  private:
+    /* 这里是私有相机变量 */
+
+    void initialize() {
+        ...
+    }
+
+    color ray_color(const ray& r, const hittable& world) const {
+        ...
+    }
+};
+
+#endif
+```
+
+首先，让我们填写` main.cc `中的` ray_color() `函数：
+
+```cpp
+// camera.h
+class camera {
+  ...
+
+  private:
+    ...
+
+    color ray_color(const ray& r, const hittable& world) const {
+        hit_record rec;
+
+        if (world.hit(r, interval(0, infinity), rec)) {
+            return 0.5 * (rec.normal + color(1,1,1));
+        }
+
+        vec3 unit_direction = unit_vector(r.direction());
+        auto a = 0.5*(unit_direction.y() + 1.0);
+        return (1.0-a)*color(1.0, 1.0, 1.0) + a*color(0.5, 0.7, 1.0);
+    }
+};
+
+#endif
+```
+
+现在我们将` main() `函数中的几乎所有内容都移到了新的相机类中。` main() `函数中唯一剩下的就是构建世界。下面是包含新迁移代码的相机类
+
+```cpp
+// camera.h
+...
+#include "rtweekend.h"
+
+#include "color.h"
+#include "hittable.h"
+
+#include <iostream>
+
+class camera {
+  public:
+    double aspect_ratio = 1.0;  // 图像宽度与高度之比
+    int    image_width  = 100;  // 以像素为单位的渲染图像宽度
+
+    void render(const hittable& world) {
+        initialize();
+
+        std::cout << "P3\n" << image_width << ' ' << image_height << "\n255\n";
+
+        for (int j = 0; j < image_height; ++j) {
+            std::clog << "\rScanlines remaining: " << (image_height - j) << ' ' << std::flush;
+            for (int i = 0; i < image_width; ++i) {
+                auto pixel_center = pixel00_loc + (i * pixel_delta_u) + (j * pixel_delta_v);
+                auto ray_direction = pixel_center - center;
+                ray r(center, ray_direction);
+
+                color pixel_color = ray_color(r, world);
+                write_color(std::cout, pixel_color);
+            }
+        }
+
+        std::clog << "\rDone.                 \n";
+    }
+
+  private:
+    int    image_height;   // 渲染图像高度
+    point3 center;         // 相机中心
+    point3 pixel00_loc;    // （0，0）像素的位置
+    vec3   pixel_delta_u;  // 向右偏移像素
+    vec3   pixel_delta_v;  // 向下偏移像素
+
+    void initialize() {
+        image_height = static_cast<int>(image_width / aspect_ratio);
+        image_height = (image_height < 1) ? 1 : image_height;
+
+        center = point3(0, 0, 0);
+
+        // 确定视口尺寸
+        auto focal_length = 1.0;
+        auto viewport_height = 2.0;
+        auto viewport_width = viewport_height * (static_cast<double>(image_width)/image_height);
+
+        // 计算横向和纵向视口边缘的矢量
+        auto viewport_u = vec3(viewport_width, 0, 0);
+        auto viewport_v = vec3(0, -viewport_height, 0);
+
+        // 计算像素间的水平和垂直增量向量
+        pixel_delta_u = viewport_u / image_width;
+        pixel_delta_v = viewport_v / image_height;
+
+        // 计算左上角像素的位置
+        auto viewport_upper_left =
+            center - vec3(0, 0, focal_length) - viewport_u/2 - viewport_v/2;
+        pixel00_loc = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v);
+    }
+
+    color ray_color(const ray& r, const hittable& world) const {
+        ...
+    }
+};
+
+#endif
+```
+
+这是代码大大减少后的`main.cc`：
+
+```cpp
+// main.cc
+#include "rtweekend.h"
+
+#include "camera.h"
+#include "hittable_list.h"
+#include "sphere.h"
+
+int main() {
+    hittable_list world;
+
+    world.add(make_shared<sphere>(point3(0,0,-1), 0.5));
+    world.add(make_shared<sphere>(point3(0,-100.5,-1), 100));
+
+    camera cam;
+
+    cam.aspect_ratio = 16.0 / 9.0;
+    cam.image_width  = 400;
+
+    cam.render(world);
+}
+```
+
+运行这个重构后的程序应该会生成与以前相同的渲染图像。
+
+# 8. 抗锯齿
+
+当你放大到目前为止渲染过的图像时，你可能会注意到图像边缘的“阶梯状”特性，这种现象通常被称为“走样”(*aliasing*)或“锯齿”(jaggies)。与此相反，真实相机拍摄的照片通常沿着边缘没有锯齿，因为边缘像素是前景和背景的混合。请考虑，与我们渲染的图像不同，真实的世界图像是连续的。换句话说，世界（以及它的任何真实图像）实际上具有无限的分辨率。我们可以通过对每个像素取多个样本的平均值来获得相同的效果。
+
+当单条光线穿过每个像素的中心时，我们执行通常所说的点采样(*point sampling*)的过程。点采样的问题可以通过渲染一个远处的小棋盘格来说明。如果这个棋盘格由一个8×8的黑白瓷砖网格组成，但只有四条射线击中它，那么所有四条射线可能只与白色瓷砖相交，或者只与黑色相交，或者是一些奇怪的组合。在现实世界中，当我们用眼睛远远地看到一个棋盘格时，我们会感知到它是灰色的，而不是黑白色的尖锐点。这是因为我们的眼睛自然地在做我们希望射线追踪器做的事情：整合落在渲染图像的特定（离散）区域上的光线（连续函数）。
+
+显然，我们通过在像素中心多次重新采样相同的光线并不会得到任何好处——我们每次都会得到相同的结果。相反，我们想要采样落在像素周围的光，然后将这些样本整合起来，得到近似真实的连续结果。那么，我们如何整合落在像素周围的光呢？
+
+我们将采用最简单的模型：采样位于像素中心并延伸到四个相邻像素中心的正方形区域。这不是最佳方法，但它是最直接的。（有关此主题的更深入讨论，请参阅“[A Pixel is Not a Little Square](https://www.researchgate.net/publication/244986797_A_Pixel_Is_Not_A_Little_Square_A_Pixel_Is_Not_A_Little_Square_A_Pixel_Is_Not_A_Little_Square)”）。![像素样本](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.08-pixel-samples.jpg)
+
+## 8.1 一些随机数工具
+
+我们需要一个能够返回真实随机数的随机数生成器。这个函数应该返回一个规范的随机数，按照惯例，这个数在$$0≤n<1$$的范围内。这里的$$<1$$很重要，因为有时我们会利用这一点。
+
+一个简单的方法是使用可以在`<cstdlib>`中找到的`rand()`函数，它返回一个范围在`0`和`RAND_MAX`之间的随机整数。因此，我们可以通过以下代码片段获取所需的真实随机数，这段代码添加到`rtweekend.h`中：
+
+```cpp
+// rtweekend.h
+#include <cmath>
+#include <cstdlib>
+#include <limits>
+#include <memory>
+...
+
+// 工具函数
+
+inline double degrees_to_radians(double degrees) {
+    return degrees * pi / 180.0;
+}
+
+inline double random_double() {
+    // 返回 [0,1) 中的随机实数。
+    return rand() / (RAND_MAX + 1.0);
+}
+
+inline double random_double(double min, double max) {
+    // 返回 [min, max) 中的随机实数。
+    return min + (max-min)*random_double();
+}
+```
+
+C++ 传统上没有标准的随机数生成器，但较新版本的 C++ 已经通过` <random> `标头解决了这个问题（根据一些专家的说法这个方法并不完美）。如果你想使用这个方法，你可以通过我们需要的条件获得一个随机数，如下：
+
+```cpp
+#include <random>
+
+inline double random_double() {
+    static std::uniform_real_distribution<double> distribution(0.0, 1.0);
+    static std::mt19937 generator;
+    return distribution(generator);
+}
+```
+
+## 8.2 使用多个样本生成像素
+
+对于由多个样本组成的单个像素，我们将从像素周围区域选择样本，并将结果光（颜色）值进行平均。
+
+首先，我们将更新` write_color() `函数来考虑我们使用的样本数量：我们需要找到所有样本的平均值。为此，我们将在每次迭代中添加完整的颜色，然后在写出颜色之前，在最后进行一次除法（除以样本数量）。为了确保最终结果的颜色分量保持在适当的$$ [0,1] $$范围内，我们将添加并使用一个小的辅助函数：`interval::clamp(x)`。
+
+```cpp
+// interval.h
+class interval {
+  public:
+    ...
+
+    bool surrounds(double x) const {
+        return min < x && x < max;
+    }
+
+    double clamp(double x) const {
+        if (x < min) return min;
+        if (x > max) return max;
+        return x;
+    }
+    ...
+};
+```
+
+以下是更新后的` write_color() `函数，它取得像素的所有光的总和以及涉及的样本数量：
+
+```cpp
+// color.h
+void write_color(std::ostream &out, color pixel_color, int samples_per_pixel) {
+    auto r = pixel_color.x();
+    auto g = pixel_color.y();
+    auto b = pixel_color.z();
+
+    // 用颜色除以样本数。
+    auto scale = 1.0 / samples_per_pixel;
+    r *= scale;
+    g *= scale;
+    b *= scale;
+
+    // 写入每个颜色分量转换后的 [0,255] 值。
+    static const interval intensity(0.000, 0.999);
+    out << static_cast<int>(256 * intensity.clamp(r)) << ' '
+        << static_cast<int>(256 * intensity.clamp(g)) << ' '
+        << static_cast<int>(256 * intensity.clamp(b)) << '\n';
+}
+```
+
+现在让我们更新相机类以定义并使用新的` camera::get_ray(i,j) `函数，该函数将为每个像素生成不同的样本。这个函数将使用一个新的辅助函数` pixel_sample_square()`，该函数在以原点为中心的单位正方形内生成随机样本点。然后，我们将这个理想正方形中的随机样本转换回我们当前正在采样的特定像素。
+
+```cpp
+class camera {
+  public:
+    double aspect_ratio      = 1.0;  // 图像宽度与高度之比
+    int    image_width       = 100;  // 以像素为单位的渲染图像宽度
+    int    samples_per_pixel = 10;   // 每个像素的随机样本数
+
+    void render(const hittable& world) {
+        initialize();
+
+        std::cout << "P3\n" << image_width << ' ' << image_height << "\n255\n";
+
+        for (int j = 0; j < image_height; ++j) {
+            std::clog << "\rScanlines remaining: " << (image_height - j) << ' ' << std::flush;
+            for (int i = 0; i < image_width; ++i) {
+                color pixel_color(0,0,0);
+                for (int sample = 0; sample < samples_per_pixel; ++sample) {
+                    ray r = get_ray(i, j);
+                    pixel_color += ray_color(r, world);
+                }
+                write_color(std::cout, pixel_color, samples_per_pixel);
+            }
+        }
+
+        std::clog << "\rDone.                 \n";
+    }
+    ...
+  private:
+    ...
+    void initialize() {
+      ...
+    }
+
+    ray get_ray(int i, int j) const {
+        // 为位置 i,j 处的像素随机获取采样的摄像机光线
+
+        auto pixel_center = pixel00_loc + (i * pixel_delta_u) + (j * pixel_delta_v);
+        auto pixel_sample = pixel_center + pixel_sample_square();
+
+        auto ray_origin = center;
+        auto ray_direction = pixel_sample - ray_origin;
+
+        return ray(ray_origin, ray_direction);
+    }
+
+    vec3 pixel_sample_square() const {
+        // 返回原点像素周围正方形中的一个随机点返回原点像素周围正方形中的一个随机点
+        auto px = -0.5 + random_double();
+        auto py = -0.5 + random_double();
+        return (px * pixel_delta_u) + (py * pixel_delta_v);
+    }
+
+    ...
+};
+
+#endif
+```
+
+（除了上面的新` pixel_sample_square() `函数，您还会在 Github 源代码中找到` pixel_sample_disk() `函数。如果您想尝试非正方形像素，可以包含此函数，但我们在本书中不会使用它。`pixel_sample_disk() `依赖于稍后定义的函数 `random_in_unit_disk()`。）
+
+`main`函数更新以设置新的相机参数。
+
+```cpp
+// main.cc
+int main() {
+    ...
+
+    camera cam;
+
+    cam.aspect_ratio      = 16.0 / 9.0;
+    cam.image_width       = 400;
+    cam.samples_per_pixel = 100;
+
+    cam.render(world);
+}
+```
+
+放大生成的图像，我们可以看到边缘像素的差异。
+
+![*抗锯齿之前和之后*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/image-20231122163154871.png)
+
+# 9. 漫反射材质
