@@ -1534,3 +1534,362 @@ int main() {
 ![*抗锯齿之前和之后*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/image-20231122163154871.png)
 
 # 9. 漫反射材质
+
+现在我们有了对象和每个像素多条光线，我们可以制作一些看起来逼真的材质。我们将从漫反射材质（*diffuse*，也称为哑光(*matte*)）开始。一个问题是我们是否混合和匹配几何体和材质（以便我们可以将材质分配给多个球体，反之亦然），或者几何体和材质是否紧密结合（这对于几何体和材质链接的程序对象可能很有用））。我们将采用大多数渲染器通常采用的分离方式，但请注意还有其他方法。
+
+## 9.1 简单的漫反射材质
+
+不发光的漫射物体只会呈现周围环境的颜色，但它们确实会用自己的固有颜色来调节周围环境的颜色。从漫反射表面反射的光的方向是随机的，因此，如果我们将三束光线发送到两个漫反射表面之间的裂缝中，它们将具有不同的随机行为：
+
+![光线反射](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.09-light-bounce-20231128185709736.jpg)
+
+它们也可能被吸收而不是反射。表面越暗，光线被吸收的可能性就越大（这就是为什么它是暗的！）。事实上，任何随机化方向的算法都会产生看起来无光泽的表面。让我们从最直观的办法开始：**在所有方向上随机均匀地反射光线的表面**。对于这种材质，照射到表面的光线在远离表面的任何方向上都有相同的概率反弹。
+
+![地平线上的等距离反射](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.10-random-vec-horizon.jpg)
+
+这种非常直观的材质是最简单的漫反射类型，事实上，许多第一批光线追踪论文都使用了这种漫反射方法（在采用我们稍后将实现的更准确的方法之前）。我们目前没有办法随机反射光线，因此我们需要向矢量实用程序标头添加一些函数。我们首先需要的是生成任意随机向量的能力：
+
+```cpp
+// vec3.h
+class vec3 {
+  public:
+    ...
+
+    double length_squared() const {
+        return e[0]*e[0] + e[1]*e[1] + e[2]*e[2];
+    }
+
+    static vec3 random() {
+        return vec3(random_double(), random_double(), random_double());
+    }
+
+    static vec3 random(double min, double max) {
+        return vec3(random_double(min,max), random_double(min,max), random_double(min,max));
+    }
+};
+```
+
+然后，我们需要弄清楚如何操纵一个随机向量，以便我们只得到位于半球表面的结果。有一些方法可以做到这一点，但实际上这些方法理解起来出奇的复杂，实现起来也相当复杂。相反，我们将使用通常最简单的算法：排除法。排除法通过重复生成随机样本，直到产生符合所需标准的样本为止。换句话说，不断排除不合适的样本，直到你找到一个好的。
+
+使用排除法在半球上生成随机向量有许多同样有效的方法，但出于我们的目的，我们将使用最简单的方法，即：
+
+1. 在单位球体内部生成随机向量
+2. 标准化这个向量
+3. 如果标准化后向量落在错误的半球表面上，反转它
+
+首先，我们将使用排除法在单位球体内生成随机向量。在单位立方体内选择一个随机点，其中$$ 𝑥$$、$$𝑦 $$和$$ 𝑧 $$的范围都是从 −1 到 +1，如果这个点在单位球体外部就排除它。
+
+![在找到一个更好的向量之前，两个向量被舍弃](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.11-sphere-vec.jpg)
+
+```cpp
+// vec3.h
+...
+
+inline vec3 unit_vector(vec3 v) {
+    return v / v.length();
+}
+
+inline vec3 random_in_unit_sphere() {
+    while (true) {
+        auto p = vec3::random(-1,1);
+        if (p.length_squared() < 1)
+            return p;
+    }
+}
+```
+
+一旦我们在单位球面上有了一个随机向量，我们就需要对其进行标准化以获得单位球面上的向量。
+
+![标准化被成功被接受的向量](https://raytracing.github.io/images/fig-1.12-sphere-unit-vec.jpg)
+
+```cpp
+// vec3.h
+...
+
+inline vec3 random_in_unit_sphere() {
+    while (true) {
+        auto p = vec3::random(-1,1);
+        if (p.length_squared() < 1)
+            return p;
+    }
+}
+
+
+inline vec3 random_unit_vector() {
+    return unit_vector(random_in_unit_sphere());
+}
+```
+
+现在我们在单位球体的表面上有了一个随机向量，我们可以通过与表面法线进行比较来确定它是否在正确的半球上：
+
+![法向量告诉我们需要哪个半球](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.13-surface-normal-20231128191336982.jpg)
+
+我们可以采用表面法线和随机向量的点积来确定它是否位于正确的半球中。**如果点积为正，则向量位于正确的半球中。如果点积为负，那么我们需要反转向量。**
+
+```cpp
+// vec3.h
+...
+
+inline vec3 random_unit_vector() {
+    return unit_vector(random_in_unit_sphere());
+}
+
+
+inline vec3 random_on_hemisphere(const vec3& normal) {
+    vec3 on_unit_sphere = random_unit_vector();
+    if (dot(on_unit_sphere, normal) > 0.0) // In the same hemisphere as the normal
+        return on_unit_sphere;
+    else
+        return -on_unit_sphere;
+}
+```
+
+如果光线从材质上反射并保持 100% 的颜色，那么我们就说该材质是白色的。如果光线从材质上反射并保留 0% 的颜色，则我们称该材质为黑色。作为漫反射材质的首次演示，我们将设置` ray_color `函数以返回反射颜色的 50%。我们应该期望得到漂亮的灰色。
+
+```cpp
+// camera.h
+class camera {
+  ...
+  private:
+    ...
+    color ray_color(const ray& r, const hittable& world) const {
+        hit_record rec;
+
+        if (world.hit(r, interval(0, infinity), rec)) {
+            vec3 direction = random_on_hemisphere(rec.normal);
+            return 0.5 * ray_color(ray(rec.p, direction), world);        }
+
+        vec3 unit_direction = unit_vector(r.direction());
+        auto a = 0.5*(unit_direction.y() + 1.0);
+        return (1.0-a)*color(1.0, 1.0, 1.0) + a*color(0.5, 0.7, 1.0);
+    }
+};
+```
+
+...事实上，我们确实得到了相当漂亮的灰色球体：
+
+![漫反射球体的第一次渲染](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.07-first-diffuse.png)
+
+## 9.2 限制子光线的数量
+
+这里潜伏着一个潜在的问题。请注意，`ray_color `函数是递归的。什么时候会停止递归？当它无法击中任何东西时。然而，在某些情况下，这可能会很长——长到足以摧毁堆栈。为了防止这种情况，我们限制最大递归深度，在最大深度处不返回任何光线：
+
+```cpp
+// camera.h
+class camera {
+  public:
+    double aspect_ratio      = 1.0;  // Ratio of image width over height
+    int    image_width       = 100;  // Rendered image width in pixel count
+    int    samples_per_pixel = 10;   // Count of random samples for each pixel
+    int    max_depth         = 10;   // Maximum number of ray bounces into scene
+    void render(const hittable& world) {
+        initialize();
+
+        std::cout << "P3\n" << image_width << ' ' << image_height << "\n255\n";
+
+        for (int j = 0; j < image_height; ++j) {
+            std::clog << "\rScanlines remaining: " << (image_height - j) << ' ' << std::flush;
+            for (int i = 0; i < image_width; ++i) {
+                color pixel_color(0,0,0);
+                for (int sample = 0; sample < samples_per_pixel; ++sample) {
+                    ray r = get_ray(i, j);
+                    pixel_color += ray_color(r, max_depth, world);                }
+                write_color(std::cout, pixel_color, samples_per_pixel);
+            }
+        }
+
+        std::clog << "\rDone.                 \n";
+    }
+    ...
+  private:
+    ...
+    color ray_color(const ray& r, int depth, const hittable& world) const {        hit_record rec;
+
+
+        // If we've exceeded the ray bounce limit, no more light is gathered.
+        if (depth <= 0)
+            return color(0,0,0);
+        if (world.hit(r, interval(0, infinity), rec)) {
+            vec3 direction = random_on_hemisphere(rec.normal);
+            return 0.5 * ray_color(ray(rec.p, direction), depth-1, world);        }
+
+        vec3 unit_direction = unit_vector(r.direction());
+        auto a = 0.5*(unit_direction.y() + 1.0);
+        return (1.0-a)*color(1.0, 1.0, 1.0) + a*color(0.5, 0.7, 1.0);
+    }
+};
+```
+
+更新` main() `函数以使用这个新的深度限制：
+
+```cpp
+// main.cc
+int main() {
+    ...
+
+    camera cam;
+
+    cam.aspect_ratio      = 16.0 / 9.0;
+    cam.image_width       = 400;
+    cam.samples_per_pixel = 100;
+    cam.max_depth         = 50;
+    cam.render(world);
+}
+```
+
+对于这个非常简单的场景，我们应该得到基本相同的结果：
+
+![有限次反弹的漫反射球体的第二次渲染](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.08-second-diffuse.png)
+
+## 9.3 修复阴影痤疮
+
+我们还需要解决一个微妙的错误。当光线与表面相交时，它会尝试准确计算交点。不幸的是，对我们来说，这种计算容易受到浮点数舍入误差的影响，可能导致交点略有偏差。这意味着下一个光线的起点，即从表面随机散射的光线，不太可能与表面完全平齐。它可能刚好在表面之上，也可能刚好在表面之下。如果光线的起点刚好在表面下方，那么它可能会再次与该表面相交。这意味着它会在$$ 𝑡=0.00000001 $$或者击中函数给出的任何浮点数近似值时找到最近的表面。解决这个问题最简单的方法就是忽略非常接近计算交点的碰撞：
+
+```cpp
+// camera.h
+class camera {
+  ...
+  private:
+    ...
+    color ray_color(const ray& r, int depth, const hittable& world) const {
+        hit_record rec;
+
+        // If we've exceeded the ray bounce limit, no more light is gathered.
+        if (depth <= 0)
+            return color(0,0,0);
+
+
+        if (world.hit(r, interval(0.001, infinity), rec)) {            vec3 direction = random_on_hemisphere(rec.normal);
+            return 0.5 * ray_color(ray(rec.p, direction), depth-1, world);
+        }
+
+        vec3 unit_direction = unit_vector(r.direction());
+        auto a = 0.5*(unit_direction.y() + 1.0);
+        return (1.0-a)*color(1.0, 1.0, 1.0) + a*color(0.5, 0.7, 1.0);
+    }
+};
+```
+
+这样就解决了阴影痤疮问题。是的，确实是这么叫的。结果如下：
+
+![没有阴影痤疮的漫反射球体](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.09-no-acne.png)
+
+## 9.4 真正的朗伯反射(*Lambertian Reflection*)
+
+均匀地在半球上散射反射光线可以产生漂亮的柔和漫反射模型，但我们肯定可以做得更好。更准确地表现真实漫反射物体的是朗伯分布(*Lambertian distribution*)。这种分布以与$$ cos𝜙 $$成比例的方式散射反射光线，其中$$ 𝜙 $$是反射光线与表面法线之间的角度。**这意味着反射光线最有可能在接近表面法线的方向上散射，而在远离法线的方向上散射的可能性较小。**这种非均匀的朗伯分布比我们之前的均匀散射更好地模拟了现实世界中的材料反射。
+
+我们可以通过向法线向量添加一个随机单位向量来创建这种分布。在表面的交点处，有击中点$$ 𝐩 $$和表面的法线$$ 𝐧$$。在交点处，这个表面恰好有两个侧面，因此任何交点只能有两个唯一的与之相切的单位球体（每个表面的一侧一个）。这两个单位球体将被其半径的长度从表面上移开，对于单位球体来说，这个长度恰好是1。
+
+一个球体将朝着表面的法线$$𝐧$$的方向移开，另一个球体将朝着相反方向（$$−𝐧$$）移开。这给我们留下了两个单位大小的球体，它们只会在交点处与表面刚好接触。由此，一个球体的中心位于（$$𝐏+𝐧$$），另一个球体的中心位于（$$𝐏−𝐧$$）。位于（$$𝐏−𝐧$$）的球体被认为是在表面内部，而中心位于（$$𝐏+𝐧$$）的球体被认为是在表面外部。
+
+我们想要选择与光线原点处于同一侧的切线单位球体。在这个单位半径球体上选择一个随机点 𝐒，并从击中点 𝐏 发送一条光线到随机点 𝐒（这是向量（𝐒−𝐏））：
+
+![根据朗伯分布随机生成向量](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.14-rand-unitvec.jpg)
+
+变化实际上相当小：
+
+```cpp
+// camera.h
+class camera {
+    ...
+    color ray_color(const ray& r, int depth, const hittable& world) const {
+        hit_record rec;
+
+        // If we've exceeded the ray bounce limit, no more light is gathered.
+        if (depth <= 0)
+            return color(0,0,0);
+
+        if (world.hit(r, interval(0.001, infinity), rec)) {
+            vec3 direction = rec.normal + random_unit_vector();            return 0.5 * ray_color(ray(rec.p, direction), depth-1, world);
+    }
+
+        vec3 unit_direction = unit_vector(r.direction());
+        auto a = 0.5*(unit_direction.y() + 1.0);
+        return (1.0-a)*color(1.0, 1.0, 1.0) + a*color(0.5, 0.7, 1.0);
+    }
+};
+```
+
+渲染后我们得到类似的图像：
+
+![朗伯球体的正确渲染](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.10-correct-lambertian.png)
+
+在我们的两个球体组成的简单场景中，很难区分这两种漫反射方法的差异，但你应该能注意到两个重要的视觉差异：
+
+1. 变更后，阴影更加明显
+2. 变更后，两个球体都因天空的蓝色而呈现出蓝色。
+
+这些变化都是由于光线的散射更不均匀——更多的光线朝着法线散射。这意味着对于漫反射物体，它们会显得更暗，因为反弹向相机的光线较少。对于阴影，更多的光线直接向上反弹，因此球体下方的区域更暗。
+
+大多数常见的日常物体并不是完全漫反射的，因此我们对这些物体在光照下的行为的直觉可能形成不佳。随着本书中场景的复杂化，鼓励您在这里呈现的不同漫反射渲染器之间切换。大多数感兴趣的场景将包含大量的漫反射材料。通过了解不同漫反射方法对场景照明的影响，你可以获得宝贵的见解。
+
+## 9.5 使用伽马校正进行准确的颜色强度
+注意球体下的阴影。图片非常暗，但我们的球体只吸收每次碰撞的一半能量，因此它们是 50% 的反射器。球体应该看起来很亮（在现实生活中是浅灰色的），但它们看起来相当暗。如果我们逐步展示我们的漫反射材料的完整亮度范围，我们可以更清楚地看到这一点。我们首先将` ray_color `函数的反射率从 0.5（50%）设置为 0.1（10%）：
+
+```cpp
+// camera.h
+class camera {
+    ...
+    color ray_color(const ray& r, int depth, const hittable& world) const {
+        hit_record rec;
+
+        // 如果我们超过了光线反弹的限制，就无法再聚集更多的光线。
+        if (depth <= 0)
+            return color(0,0,0);
+
+        if (world.hit(r, interval(0.001, infinity), rec)) {
+            vec3 direction = rec.normal + random_unit_vector();
+            return 0.1 * ray_color(ray(rec.p, direction), depth-1, world);    }
+
+        vec3 unit_direction = unit_vector(r.direction());
+        auto a = 0.5*(unit_direction.y() + 1.0);
+        return (1.0-a)*color(1.0, 1.0, 1.0) + a*color(0.5, 0.7, 1.0);
+    }
+};
+```
+
+我们在这个新的 10% 反射率下进行渲染。然后我们将反射率设置为 30%，再次渲染。我们重复 50%、70% 和最终的 90%。你可以在你选择的照片编辑器中从左到右叠加这些图像，你应该会得到一个非常好的视觉呈现，展示你选择的亮度范围的增加。这是我们到目前为止一直在使用的：
+
+![迄今为止渲染器的色域](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.11-linear-gamut.png)
+
+如果你仔细观察，或者使用颜色拾取器，你会注意到 50% 反射率的渲染（中间的那个）比白色和黑色之间的中间灰色（中灰色）要暗得多。事实上，70% 的反射器更接近中灰色。造成这种情况的原因是，几乎所有的计算机程序都假设图像在写入图像文件之前已经进行了“伽马校正”(*gamma corrected*)。这意味着 0 到 1 的值在存储为字节之前应用了某种转换。没有进行转换的数据写入的图像被称为线性空间(*linear space*)中的图像，而进行了转换的图像被称为伽马空间(*gamma space*)中的图像。你正在使用的图像查看器可能期望图像在伽马空间中，但我们给它的是线性空间中的图像。这就是我们的图像看起来不准确地暗的原因。
+
+图像应该存储在伽马空间中有很多好的理由，但对于我们的目的，我们只需要意识到这一点。我们将把我们的数据转换到伽马空间，以便我们的图像查看器可以更准确地显示我们的图像。作为一个简单的近似，我们可以使用`gamma 2`作为我们的转换，这是从伽马空间到线性空间转换时使用的指数。我们需要从线性空间转换到伽马空间，这意味着取`gamma 2`的逆，即指数为$$ 1/gamma$$，这只是平方根。
+
+```cpp
+// color.h
+inline double linear_to_gamma(double linear_component)
+{
+    return sqrt(linear_component);
+}
+void write_color(std::ostream &out, color pixel_color, int samples_per_pixel) {
+    auto r = pixel_color.x();
+    auto g = pixel_color.y();
+    auto b = pixel_color.z();
+
+    // 用颜色除以样本数。
+    auto scale = 1.0 / samples_per_pixel;
+    r *= scale;
+    g *= scale;
+    b *= scale;
+
+
+    // 线性到伽玛变换。
+    r = linear_to_gamma(r);
+    g = linear_to_gamma(g);
+    b = linear_to_gamma(b);
+    
+    // 写入每个颜色分量的转换后的 [0,255] 值。
+    static const interval intensity(0.000, 0.999);
+    out << static_cast<int>(256 * intensity.clamp(r)) << ' '
+        << static_cast<int>(256 * intensity.clamp(g)) << ' '
+        << static_cast<int>(256 * intensity.clamp(b)) << '\n';
+}
+```
+
+使用这种伽马校正，我们现在得到了一个从暗到亮更加一致的渐变：
+
+![*两个漫反射球体的伽马校正渲染*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.12-gamma-gamut.png)
+
+# 10. 金属
+
