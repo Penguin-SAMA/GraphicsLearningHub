@@ -1893,3 +1893,286 @@ void write_color(std::ostream &out, color pixel_color, int samples_per_pixel) {
 
 # 10. 金属
 
+## 10.1 材料的抽象类
+
+如果我们想让不同的物体拥有不同的材料，我们面临一个设计决策。我们可以拥有一个带有许多参数的通用材料类型，以便任何单一材料类型都可以忽略不影响它的参数。这不是一个坏方法。或者我们可以有一个封装独特行为的抽象材料类。我更喜欢后一种方法。对于我们的程序来说，材料需要做两件事：
+
+1. 产生一个散射光线（或者说它吸收了入射光线）。
+2. 如果散射了，说明光线应该被衰减多少。
+
+这就是抽象类的定义：
+
+```cpp
+// material.h
+#ifndef MATERIAL_H
+#define MATERIAL_H
+
+#include "rtweekend.h"
+
+class hit_record;
+
+class material {
+  public:
+    virtual ~material() = default;
+
+    virtual bool scatter(
+        const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered) const = 0;
+};
+
+#endif
+```
+
+## 10.2 描述光线与物体相交的数据结构
+
+`hit_record `是为了避免一堆参数，所以我们可以把任何我们想要的信息放进去。你可以用参数代替封装类型，这只是个人喜好的问题。可撞击物和材料需要能够在代码中引用对方的类型，所以存在一些引用的循环性。在 C++ 中，我们添加了一行` class material`; 来告诉编译器` material `是一个稍后会定义的类。因为我们只是指定了一个指向类的指针，编译器不需要知道类的细节，这解决了循环引用的问题。
+
+```cpp
+// hittable.h
+#include "rtweekend.h"
+
+class material;
+class hit_record {
+  public:
+    point3 p;
+    vec3 normal;    
+    shared_ptr<material> mat;    
+    double t;
+    bool front_face;
+
+    void set_face_normal(const ray& r, const vec3& outward_normal) {
+        front_face = dot(r.direction(), outward_normal) < 0;
+        normal = front_face ? outward_normal : -outward_normal;
+    }
+};
+```
+
+`hit_record `只是一种将一堆参数塞入一个类的方法，这样我们就可以把它们作为一个组发送。当一条光线撞击一个表面（例如一个特定的球体）时，`hit_record `中的材料指针将被设置为指向在` main() `中设置球体时给予的材料指针。当 `ray_color() `程序获取` hit_record `时，它可以调用材料指针的成员函数来找出是否有光线被散射。
+
+为了实现这一点，`hit_record `需要被告知分配给球体的材料。
+
+```cpp
+// shpere.h
+class sphere : public hittable {
+  public:
+    sphere(point3 _center, double _radius, shared_ptr<material> _material)
+      : center(_center), radius(_radius), mat(_material) {}
+
+    bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
+        ...
+
+        rec.t = root;
+        rec.p = r.at(rec.t);
+        vec3 outward_normal = (rec.p - center) / radius;
+        rec.set_face_normal(r, outward_normal);
+        rec.mat = mat;
+
+        return true;
+    }
+
+  private:
+    point3 center;
+    double radius;
+    shared_ptr<material> mat;
+};
+```
+
+## 10.3 模拟光的散射和反射
+
+对于我们已经拥有的漫反射(*Lambertian*)情况，它可以始终散射并通过其反射率$$ R $$进行衰减，或者它可以有时散射（概率为$$ 1−R$$）并不进行衰减（其中没有散射的光线就被材料吸收）。它也可以是这两种策略的混合。我们选择始终散射，所以*Lambertian*材料变成了这样一个简单的类：
+
+```cpp
+// material.h
+class material {
+    ...
+};
+
+class lambertian : public material {
+  public:
+    lambertian(const color& a) : albedo(a) {}
+
+    bool scatter(const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered)
+    const override {
+        auto scatter_direction = rec.normal + random_unit_vector();
+        scattered = ray(rec.p, scatter_direction);
+        attenuation = albedo;
+        return true;
+    }
+
+  private:
+    color albedo;
+};
+```
+
+请注意我们可以选择以某种固定概率$$ p $$散射，并且让衰减为$ albedo/p $的第三个选项。由你选择。
+
+如果你仔细阅读上面的代码，你会注意到一个小小的恶作剧。如果我们生成的随机单位向量与法线向量完全相反，两者将相加为零，这将导致零散射方向向量。这会导致后续的糟糕情况（无穷大和` NaN`），所以我们需要在传递之前拦截这个条件。
+
+为此，我们将创建一个新的向量方法 —` vec3::near_zero() `— 如果向量在所有维度上非常接近零，则返回` true`。
+
+```cpp
+// vec3.h
+class vec3 {
+    ...
+
+    double length_squared() const {
+        return e[0]*e[0] + e[1]*e[1] + e[2]*e[2];
+    }
+
+    bool near_zero() const {
+        // Return true if the vector is close to zero in all dimensions.
+        auto s = 1e-8;
+        return (fabs(e[0]) < s) && (fabs(e[1]) < s) && (fabs(e[2]) < s);
+    }
+    ...
+};
+```
+
+```cpp
+// material.h
+class lambertian : public material {
+  public:
+    lambertian(const color& a) : albedo(a) {}
+
+    bool scatter(const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered)
+    const override {
+        auto scatter_direction = rec.normal + random_unit_vector();
+
+        // Catch degenerate scatter direction
+        if (scatter_direction.near_zero())
+            scatter_direction = rec.normal;
+
+        scattered = ray(rec.p, scatter_direction);
+        attenuation = albedo;
+        return true;
+    }
+
+  private:
+    color albedo;
+};
+```
+
+## 10.4 镜面反射
+
+对于抛光金属，光线不会随机散射。关键问题是：光线如何从金属镜面反射？向量数学在这里是我们的朋友：
+
+![光线反射](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.15-reflection.jpg)
+
+红色的反射光线方向只是$$ v+2b$$。在我们的设计中，$$n $$是单位向量，但$$ v $$可能不是。$$b $$的长度应该是$$ v⋅n$$。因为$$ v $$指向内侧，我们需要一个负号，得到：
+
+```cpp
+// vec3.h
+...
+
+inline vec3 random_on_hemisphere(const vec3& normal) {
+    ...
+}
+
+vec3 reflect(const vec3& v, const vec3& n) {
+    return v - 2*dot(v,n)*n;
+}
+
+...
+```
+
+金属材料仅使用以下公式反射光线：
+
+```cpp
+// material.h
+...
+
+class lambertian : public material {
+    ...
+};
+
+class metal : public material {
+  public:
+    metal(const color& a) : albedo(a) {}
+
+    bool scatter(const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered)
+    const override {
+        vec3 reflected = reflect(unit_vector(r_in.direction()), rec.normal);
+        scattered = ray(rec.p, reflected);
+        attenuation = albedo;
+        return true;
+    }
+
+  private:
+    color albedo;
+};
+```
+
+我们需要修改` ray_color() `函数来进行所有更改：
+
+```cpp
+// camera.h
+...
+#include "rtweekend.h"
+
+#include "color.h"
+#include "hittable.h"
+#include "material.h"
+...
+
+class camera {
+  ...
+  private:
+    ...
+    color ray_color(const ray& r, int depth, const hittable& world) const {
+        hit_record rec;
+
+        // 如果我们超过了光线反弹的限制，就无法再聚集更多的光线
+        if (depth <= 0)
+            return color(0,0,0);
+
+        if (world.hit(r, interval(0.001, infinity), rec)) {
+            ray scattered;
+            color attenuation;
+            if (rec.mat->scatter(r, rec, attenuation, scattered))
+                return attenuation * ray_color(scattered, depth-1, world);
+            return color(0,0,0);
+        }
+
+        vec3 unit_direction = unit_vector(r.direction());
+        auto a = 0.5*(unit_direction.y() + 1.0);
+        return (1.0-a)*color(1.0, 1.0, 1.0) + a*color(0.5, 0.7, 1.0);
+    }
+};
+```
+
+## 10.5 金属球场景
+
+现在让我们在场景中添加一些金属球：
+
+```cpp
+// main.cc
+#include "rtweekend.h"
+
+#include "camera.h"#include "color.h"#include "hittable_list.h"#include "material.h"#include "sphere.h"
+
+int main() {
+    hittable_list world;
+
+    auto material_ground = make_shared<lambertian>(color(0.8, 0.8, 0.0));
+    auto material_center = make_shared<lambertian>(color(0.7, 0.3, 0.3));
+    auto material_left   = make_shared<metal>(color(0.8, 0.8, 0.8));
+    auto material_right  = make_shared<metal>(color(0.8, 0.6, 0.2));
+
+    world.add(make_shared<sphere>(point3( 0.0, -100.5, -1.0), 100.0, material_ground));
+    world.add(make_shared<sphere>(point3( 0.0,    0.0, -1.0),   0.5, material_center));
+    world.add(make_shared<sphere>(point3(-1.0,    0.0, -1.0),   0.5, material_left));
+    world.add(make_shared<sphere>(point3( 1.0,    0.0, -1.0),   0.5, material_right));
+    camera cam;
+
+    cam.aspect_ratio      = 16.0 / 9.0;
+    cam.image_width       = 400;
+    cam.samples_per_pixel = 100;
+    cam.max_depth         = 50;
+
+    cam.render(world);
+}
+```
+
+这会得到：
+
+![img](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.13-metal-shiny.png)
+
