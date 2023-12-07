@@ -2343,22 +2343,610 @@ auto material_right  = make_shared<metal>(color(0.8, 0.6, 0.2),1.0);
 
 ## 11.3 全内反射
 
-那绝对看起来不对劲。一个棘手的实际问题是，当光线处于具有较高折射率的材料中时，斯涅尔定律没有真实解，因此不可能发生折射。如果我们回顾斯涅尔定律和 sin𝜃′ 的推导：
+那绝对看起来不对劲。一个棘手的实际问题是，当光线处于具有较高折射率的材料中时，斯涅尔定律没有实数解，因此不可能发生折射。如果我们回顾斯涅尔定律和$$ sin𝜃^′ $$的推导：
+$$
+sin𝜃^′=\frac{𝜂}{𝜂^′}⋅sin𝜃
+$$
+如果光线在玻璃内部，而外部是空气（$$𝜂=1.5，𝜂^′=1.0$$）：
+$$
+sin𝜃^′=\frac{1.5}{1.0}⋅sin𝜃
+$$
+$$sin𝜃^′$$的值不能大于 1。所以，如果 
+$$
+\frac{1.5}{1.0}⋅sin𝜃>1.0
+$$
+方程两边的等式被打破，解不存在。如果解不存在，玻璃就不能折射，因此必须反射光线：
 
-sin𝜃′=𝜂/𝜂′⋅sin𝜃 如果光线在玻璃内部而外部是空气（𝜂=1.5，𝜂′=1.0）：
+```cpp
+// material.h
+if (refraction_ratio * sin_theta > 1.0) {
+    // 必须反射
+    ...
+} else {
+    // 可以反射
+    ...
+}
+```
 
-sin𝜃′=1.5/1.0⋅sin𝜃 sin𝜃′ 的值不能大于 1。所以，如果 1.5/1.0⋅sin𝜃>1.0 方程两边的等式被打破，解不存在。如果解不存在，玻璃就不能折射，因此必须反射光线：
+这里所有的光都被反射，因为在实践中这通常发生在固体物体内部，所以称为“全内反射”（*total internal reflection*）。这就是为什么有时当你浸在水中时，水-空气边界就像一面完美的镜子。
 
-这里所有的光都被反射，因为在实践中这通常发生在固体物体内部，所以称为“全内反射”。这就是为什么有时水-空气界面在你浸没时会表现为完美的镜子。
-
-我们可以使用三角函数的特性求解 sin_theta：
-
-sin𝜃=sqrt(1−cos²𝜃) 和
-
+我们可以使用三角函数的特性求解 $$sin\theta$$：
+$$
+sin𝜃=\sqrt{1−cos^2𝜃}
+$$
+和
+$$
 cos𝜃=𝐑⋅𝐧
+$$
 
-衰减总是 1 — 玻璃表面不吸收任何东西。如果我们尝试使用这些参数：
+```cpp
+// material.h
+double cos_theta = fmin(dot(-unit_direction, rec.normal), 1.0);
+double sin_theta = sqrt(1.0 - cos_theta*cos_theta);
 
-11.4 Schlick 近似 现实中的玻璃反射率随角度变化 — 当你从陡峭的角度看窗户时，它会变成镜子。有一个复杂的大公式来描述这一点，但几乎每个人都使用 Christophe Schlick 提出的一种便宜且出奇准确的多项式近似。这就产生了我们完整的玻璃材料：
+if (refraction_ratio * sin_theta > 1.0) {
+    // Must Reflect
+    ...
+} else {
+    // Can Refract
+    ...
+}
+```
 
-11.5 模拟空心玻璃球 对于电介质球体，一个有趣且简单的技巧是注意到，如果你使用负半径，几何形状不受影响，但表面法线向内。这可以用作泡泡来制造一个空心玻璃球：
+而总是折射的电介质材料（在可能的情况下）是：
+
+```cpp
+// material.h
+class dielectric : public material {
+  public:
+    dielectric(double index_of_refraction) : ir(index_of_refraction) {}
+
+    bool scatter(const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered)
+    const override {
+        attenuation = color(1.0, 1.0, 1.0);
+        double refraction_ratio = rec.front_face ? (1.0/ir) : ir;
+
+        vec3 unit_direction = unit_vector(r_in.direction());        
+        double cos_theta = fmin(dot(-unit_direction, rec.normal), 1.0);
+        double sin_theta = sqrt(1.0 - cos_theta*cos_theta);
+
+        bool cannot_refract = refraction_ratio * sin_theta > 1.0;
+        vec3 direction;
+
+        if (cannot_refract)
+            direction = reflect(unit_direction, rec.normal);
+        else
+            direction = refract(unit_direction, rec.normal, refraction_ratio);
+
+        scattered = ray(rec.p, direction);        
+        return true;
+    }
+
+  private:
+    double ir; // Index of Refraction
+};
+```
+
+衰减始终为 1 —— 玻璃表面什么也不吸收。如果我们用这些参数试一试：
+
+```cpp
+// main.cc
+auto material_ground = make_shared<lambertian>(color(0.8, 0.8, 0.0));
+auto material_center = make_shared<lambertian>(color(0.1, 0.2, 0.5));
+auto material_left   = make_shared<dielectric>(1.5);
+auto material_right  = make_shared<metal>(color(0.8, 0.6, 0.2), 0.0);
+```
+
+我们可以得到：
+
+![*有时会折射的玻璃球*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.17-glass-sometimes-refract.png)
+
+## 11.4 Schlick 近似 
+
+现实中的玻璃反射率随角度变化 —— 当你从陡峭的角度看窗户时，它会变成镜子。有一个复杂的公式来描述这一点，但几乎每个人都使用 *Christophe Schlick* 提出的一种廉价且出奇准确的多项式近似。这就产生了我们完整的玻璃材料：
+
+```cpp
+// material.h
+class dielectric : public material {
+  public:
+    dielectric(double index_of_refraction) : ir(index_of_refraction) {}
+
+    bool scatter(const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered)
+    const override {
+        attenuation = color(1.0, 1.0, 1.0);
+        double refraction_ratio = rec.front_face ? (1.0/ir) : ir;
+
+        vec3 unit_direction = unit_vector(r_in.direction());
+        double cos_theta = fmin(dot(-unit_direction, rec.normal), 1.0);
+        double sin_theta = sqrt(1.0 - cos_theta*cos_theta);
+
+        bool cannot_refract = refraction_ratio * sin_theta > 1.0;
+        vec3 direction;
+        if (cannot_refract || reflectance(cos_theta, refraction_ratio) > random_double())
+            direction = reflect(unit_direction, rec.normal);
+        else
+            direction = refract(unit_direction, rec.normal, refraction_ratio);
+
+        scattered = ray(rec.p, direction);
+        return true;
+    }
+
+  private:
+    double ir; // Index of Refraction
+
+    static double reflectance(double cosine, double ref_idx) {
+        // 使用Schlick近似法计算反射率
+        auto r0 = (1-ref_idx) / (1+ref_idx);
+        r0 = r0*r0;
+        return r0 + (1-r0)*pow((1 - cosine),5);
+    }};
+```
+
+## 11.5 模拟空心玻璃球 
+
+对于电介质球体，一个有趣且简单的技巧是注意到，如果你使用负半径，几何形状不受影响，但表面法线向内。这可以用作制作空心玻璃球的气泡：
+
+```cpp
+// main.cc
+...
+world.add(make_shared<sphere>(point3( 0.0, -100.5, -1.0), 100.0, material_ground));
+world.add(make_shared<sphere>(point3( 0.0,    0.0, -1.0),   0.5, material_center));
+world.add(make_shared<sphere>(point3(-1.0,    0.0, -1.0),   0.5, material_left));world.add(make_shared<sphere>(point3(-1.0,    0.0, -1.0),  -0.4, material_left));world.add(make_shared<sphere>(point3( 1.0,    0.0, -1.0),   0.5, material_right));
+...
+```
+
+这会得到：
+
+![*空心玻璃球*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.18-glass-hollow.png)
+
+# 12 可定位相机
+
+像电介质一样，摄像机也很难调试，所以我总是逐步开发它们。首先，让我们允许调整视场角（*fov*）。这是渲染图像边缘到边缘的视觉角度。由于我们的图像不是正方形，水平和垂直的 fov 不同。我总是使用垂直 fov。我通常还会以**度**为单位指定它，并在构造函数内部转换为**弧度** — 这是个人喜好。
+
+## 12.1 摄像机观看几何
+
+首先，我们将保持光线从原点出发，朝向 $$ z=−1 $$ 平面。我们可以把它设置为 $$z=−2$$ 平面，或其他什么平面，只要我们使 $$h$$ 成为与该距离的比率。这是我们的设置：
+
+![摄像机观察几何（侧面）](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.18-cam-view-geom.jpg)
+
+这意味着 $$h=tan(\frac{θ}{2})$$。我们的摄像机现在变成了：
+
+```cpp
+// camera.h
+class camera {
+  public:
+    double aspect_ratio      = 1.0;  // 图像宽度与高度之比
+    int    image_width       = 100;  // 以像素为单位的渲染图像宽度
+    int    samples_per_pixel = 10;   // 每个像素的随机样本数
+    int    max_depth         = 10;   // 光线进入场景的最大反弹次数
+
+    double vfov = 90;  // 垂直视角（视场）
+    void render(const hittable& world) {
+    ...
+
+  private:
+    ...
+
+    void initialize() {
+        image_height = static_cast<int>(image_width / aspect_ratio);
+        image_height = (image_height < 1) ? 1 : image_height;
+
+        center = point3(0, 0, 0);
+
+        // Determine viewport dimensions.
+        auto focal_length = 1.0;        auto theta = degrees_to_radians(vfov);
+        auto h = tan(theta/2);
+        auto viewport_height = 2 * h * focal_length;        auto viewport_width = viewport_height * (static_cast<double>(image_width)/image_height);
+
+        // Calculate the vectors across the horizontal and down the vertical viewport edges.
+        auto viewport_u = vec3(viewport_width, 0, 0);
+        auto viewport_v = vec3(0, -viewport_height, 0);
+
+        // Calculate the horizontal and vertical delta vectors from pixel to pixel.
+        pixel_delta_u = viewport_u / image_width;
+        pixel_delta_v = viewport_v / image_height;
+
+        // Calculate the location of the upper left pixel.
+        auto viewport_upper_left =
+            center - vec3(0, 0, focal_length) - viewport_u/2 - viewport_v/2;
+        pixel00_loc = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v);
+    }
+
+    ...
+};
+```
+
+我们将使用两个接触球体的简单场景来测试这些更改，使用 90° 的视场角。
+
+```cpp
+// main.cc
+int main() {
+    hittable_list world;
+
+    auto R = cos(pi/4);
+
+    auto material_left  = make_shared<lambertian>(color(0,0,1));
+    auto material_right = make_shared<lambertian>(color(1,0,0));
+
+    world.add(make_shared<sphere>(point3(-R, 0, -1), R, material_left));
+    world.add(make_shared<sphere>(point3( R, 0, -1), R, material_right));
+    camera cam;
+
+    cam.aspect_ratio      = 16.0 / 9.0;
+    cam.image_width       = 400;
+    cam.samples_per_pixel = 100;
+    cam.max_depth         = 50;
+
+    cam.vfov = 90;
+    cam.render(world);
+}
+```
+
+这给了我们这样的渲染：
+
+![*广角视图*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.19-wide-view.png)
+
+## 12.2 定位和定向摄像机 
+
+为了获得任意视点，首先让我们命名我们关心的点。我们将放置摄像机的位置称为 `lookfrom`，我们观看的点称为 `lookat`。（稍后，如果你愿意，你可以定义一个观看的方向，而不是一个观看的点。）
+
+我们还需要一种指定摄像机的横滚或侧倾的方式：围绕 `lookat-lookfrom` 轴的旋转。另一种思考方式是，即使你保持 `lookfrom` 和 `lookat` 不变，你仍然可以围绕你的鼻子旋转你的头。我们需要的是一种为摄像机指定“向上”向量的方式。
+
+![*相机视图方向*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.19-cam-view-dir.jpg)
+
+我们可以指定任何我们想要的向上向量，只要它不平行于视线方向。将这个向上的向量投影到与视线方向正交的平面上，以获得相对于摄像机的上方向量。我使用将其命名为“视图上方”（*vup*）向量的常见惯例。经过几次叉积和向量标准化后，我们现在有了一个完整的正交基（$$u,v,w$$）来描述我们摄像机的方向。$$u$$ 是指向摄像机右侧的单位向量，$$v$$ 是指向摄像机上方的单位向量，$$w$$ 是指向与视线方向相反的单位向量（因为我们使用右手坐标系），摄像机中心位于原点。
+
+![*相机视图向上方向*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.20-cam-view-up.jpg)
+
+像之前我们的固定摄像机面向 $$−Z$$ 一样，我们任意视角的摄像机面向 $$−w$$。请记住，我们可以，但不必使用$$(0,1,0)$$来指定 vup。这很方便，会自然地保持你的摄像机水平，直到你决定疯狂的尝试摄像机角度。
+
+```cpp
+// camera.h
+class camera {
+  public:
+    double aspect_ratio      = 1.0;  // 图像宽度与高度之比
+    int    image_width       = 100;  // 以像素为单位的渲染图像宽度
+    int    samples_per_pixel = 10;   // 每个像素的随机样本数
+    int    max_depth         = 10;   // 进入场景的最大射线反弹次数
+
+    double vfov     = 90;              // 垂直视角(视场)   
+    point3 lookfrom = point3(0,0,-1);  // 点摄像机从这开始看
+    point3 lookat   = point3(0,0,0);   // 点摄像机看向这里
+    vec3   vup      = vec3(0,1,0);     // 相机相对 "向上 "的方向
+    ...
+
+  private:
+    int    image_height;   // 渲染图像高度
+    point3 center;         // 摄像机中心
+    point3 pixel00_loc;    // 像素(0,0)的位置
+    vec3   pixel_delta_u;  // 向右偏移像素
+    vec3   pixel_delta_v;  // 向下偏移像素
+    vec3   u, v, w;        // 摄像机帧基向量
+    
+    void initialize() {
+        image_height = static_cast<int>(image_width / aspect_ratio);
+        image_height = (image_height < 1) ? 1 : image_height;
+
+        center = lookfrom;
+        
+        // 确定视口尺寸.        
+        auto focal_length = (lookfrom - lookat).length();        
+        auto theta = degrees_to_radians(vfov);
+        auto h = tan(theta/2);
+        auto viewport_height = 2 * h * focal_length;
+        auto viewport_width = viewport_height * (static_cast<double>(image_width)/image_height);
+
+        // 计算摄像机坐标系的 u、v、w 单位基向量
+        w = unit_vector(lookfrom - lookat);
+        u = unit_vector(cross(vup, w));
+        v = cross(w, u);
+        
+        // 计算水平方向和垂直视口边缘的向量。 
+        vec3 viewport_u = viewport_width * u;    // 视口水平边缘的向量
+        vec3 viewport_v = viewport_height * -v;  // 视口垂直边缘的向量
+        
+        // 计算像素间的水平和垂直增向量。
+        pixel_delta_u = viewport_u / image_width;
+        pixel_delta_v = viewport_v / image_height;
+
+        // 计算左上角像素的位置。
+        auto viewport_upper_left = center - (focal_length * w) - viewport_u/2 - viewport_v/2; 
+        pixel00_loc = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v);
+    }
+
+    ...
+
+  private:
+};
+```
+
+我们将切换回之前的场景，并使用新的视点：
+
+```cpp
+// main.cc
+int main() {
+    hittable_list world;
+
+    auto material_ground = make_shared<lambertian>(color(0.8, 0.8, 0.0));
+    auto material_center = make_shared<lambertian>(color(0.1, 0.2, 0.5));
+    auto material_left   = make_shared<dielectric>(1.5);
+    auto material_right  = make_shared<metal>(color(0.8, 0.6, 0.2), 0.0);
+
+    world.add(make_shared<sphere>(point3( 0.0, -100.5, -1.0), 100.0, material_ground));
+    world.add(make_shared<sphere>(point3( 0.0,    0.0, -1.0),   0.5, material_center));
+    world.add(make_shared<sphere>(point3(-1.0,    0.0, -1.0),   0.5, material_left));
+    world.add(make_shared<sphere>(point3(-1.0,    0.0, -1.0),  -0.4, material_left));
+    world.add(make_shared<sphere>(point3( 1.0,    0.0, -1.0),   0.5, material_right));
+    camera cam;
+
+    cam.aspect_ratio      = 16.0 / 9.0;
+    cam.image_width       = 400;
+    cam.samples_per_pixel = 100;
+    cam.max_depth         = 50;
+
+    cam.vfov     = 90;
+    cam.lookfrom = point3(-2,2,1);
+    cam.lookat   = point3(0,0,-1);
+    cam.vup      = vec3(0,1,0);
+    cam.render(world);
+}
+```
+
+可以得到：
+
+![远景](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.20-view-distant.png)
+
+我们可以改变视野：
+
+```cpp
+// main.cc  
+cam.vfov     = 20;
+```
+
+可以得到：
+
+![放大](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.21-view-zoom.png)
+
+## 13. 虚焦模糊
+
+现在我们来到最后一个特性：**虚焦模糊**（*defocus*）。注意，摄影师称这为**景深**(*depth of field*)，所以确保只在你的光线追踪中使用**“虚焦模糊”**这个术语。
+
+真实相机中出现虚焦模糊的原因是因为它们需要一个大孔（而不仅仅是一个针孔）来收集光线。一个大孔会使一切失焦，但如果我们在胶片或传感器前放一个透镜，就会有一定的距离让所有东西都聚焦。放置在该距离处的物体会显得聚焦，并且距离该距离越远，就会线性地显得越模糊。你可以这样想象一个透镜：来自焦距处特定点并到达镜头的所有光线将被弯曲回图像传感器上的单个点。
+
+我们称相机中心与一切都完美聚焦的平面之间的距离为**焦距**（*focus distance*）。请注意，焦距通常不同于焦长 — **焦长**(*focus length*)是相机中心与图像平面之间的距离。然而，对于我们的模型，这两者将具有相同的值，因为我们将像素网格放在焦平面上，该平面距离相机中心的距离就是焦距。
+
+在实体相机中，通过透镜与胶片/传感器之间的距离来控制焦距。这就是为什么当你改变焦点时，你会看到透镜相对于相机移动的原因（在你的手机相机中也可能发生，但只是传感器移动）。光圈是一个控制透镜实际大小的孔。对于实体相机，如果你需要更多光线，你会使光圈变大，并且会得到更多远离焦距的物体的模糊。对于我们的虚拟相机，我们可以拥有完美的传感器，永远不需要更多的光线，所以我们只在需要虚焦模糊时使用光圈。
+
+## 13.1 薄透镜近似
+
+真实相机有一个复杂的复合透镜。对于我们的代码，我们可以模拟顺序：传感器，然后是透镜，然后是光圈。然后我们可以弄清楚在哪里发送光线，并在计算后翻转图像（图像被投影在胶片上是倒置的）。然而，图形学人员通常使用薄透镜近似：
+
+![*相机镜头模型*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.21-cam-lens.jpg)
+
+我们不需要模拟相机的任何内部 — 为了渲染相机外部的图像，那将是不必要的复杂工作。相反，我通常从一个无限薄的圆形“透镜”开始发射光线，并将它们发送到焦平面（距离透镜焦长）上的像素处，3D世界中该平面上的所有东西都完美聚焦。
+
+在实践中，我们通过将视口放置在这个平面上来实现这一点。将所有内容放在一起：
+
+1. 焦平面与相机视线方向垂直。 
+2. 焦距是相机中心与焦平面之间的距离。 
+3. 视口位于焦平面上，以相机视线方向向量为中心。 
+4. 像素位置网格位于视口内（位于 3D 世界中）。 
+5. 从当前像素位置周围区域选择随机图像采样位置。 
+6. 相机从透镜上的随机点发射光线，穿过当前图像采样位置。
+
+![*相机焦平面*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.22-cam-film-plane.jpg)
+
+## 13.2 生成采样光线
+
+没有虚焦模糊的情况下，所有场景光线都起源于`camera center`（或 `lookfrom`）。为了实现虚焦模糊，我们在相机中心构造一个圆盘。半径越大，虚焦模糊越大。你可以将我们原始的相机想象为拥有半径为零的虚焦圆盘（根本没有模糊），因此所有光线都始于圆盘中心（`lookfrom`）。
+
+那么，虚焦圆盘应该有多大呢？由于这个圆盘的大小控制我们获得多少虚焦模糊，这应该是相机类的一个参数。我们可以将圆盘的半径作为相机参数，但模糊会根据投影距离而变化。一个稍微简单的参数是指定在视口中心顶点和位于相机中心的基座（虚焦圆盘）之间的锥角。这应该在你为特定拍摄变化焦距时给你更一致的结果。
+
+由于我们将从虚焦圆盘上选择随机点，我们需要一个函数来做到这一点：`random_in_unit_disk()`。这个函数使用我们在 `random_in_unit_sphere()` 中使用的相同类型的方法，只是用于两个维度。
+
+```cpp
+// vec3.h
+inline vec3 unit_vector(vec3 u) {
+    return v / v.length();
+}
+
+inline vec3 random_in_unit_disk() {
+    while (true) {
+        auto p = vec3(random_double(-1,1), random_double(-1,1), 0);
+        if (p.length_squared() < 1)
+            return p;
+    }
+}
+```
+
+现在让我们更新相机，使光线从虚焦圆盘发射：
+
+```cpp
+// camera.h
+class camera {
+  public:
+    double aspect_ratio      = 1.0;  // 图像宽度与高度的比率
+    int    image_width       = 100;  // 以像素为单位的渲染图像宽度
+    int    samples_per_pixel = 10;   // 每个像素的随机样本数
+    int    max_depth         = 10;   // 射线进入场景的最大反弹次数
+
+    double vfov     = 90;              // 垂直视角（视野）
+    point3 lookfrom = point3(0,0,-1);  // 摄像机从哪个点看哪个点
+    point3 lookat   = point3(0,0,0);   // 摄像机正对的点
+    vec3   vup      = vec3(0,1,0);     // 摄像机相对 "向上 "的方向
+
+    double defocus_angle = 0;  // 通过每个像素的光线的变化角度
+    double focus_dist = 10;    // 从摄像机观察点到完全聚焦平面的距离
+    ...
+
+  private:
+    int    image_height;    // 渲染图像的高度
+    point3 center;          // 摄像机中心
+    point3 pixel00_loc;     // 像素 0, 0 的位置
+    vec3   pixel_delta_u;   // 像素向右的偏移量
+    vec3   pixel_delta_v;   // 向下方像素的偏移量
+    vec3   u, v, w;         // 摄像机帧基向量
+    vec3   defocus_disk_u;  // 聚焦盘水平半径
+    vec3   defocus_disk_v;  // 聚焦盘垂直半径
+    void initialize() {
+        image_height = static_cast<int>(image_width / aspect_ratio);
+        image_height = (image_height < 1) ? 1 : image_height;
+
+        center = lookfrom;
+
+        // 确定视口尺寸.        
+        // 删除 auto focal_length = (lookfrom - lookat).length();        
+        auto theta = degrees_to_radians(vfov);
+        auto h = tan(theta/2);       
+        auto viewport_height = 2 * h * focus_dist;        
+        auto viewport_width = viewport_height * (static_cast<double>(image_width)/image_height);
+
+        // 计算摄像机坐标系的 u、v、w 单位基向量
+        w = unit_vector(lookfrom - lookat);
+        u = unit_vector(cross(vup, w));
+        v = cross(w, u);
+
+        // 计算横向和纵向视口边缘的向量
+        vec3 viewport_u = viewport_width * u;    // 跨视口水平边缘的向量
+        vec3 viewport_v = viewport_height * -v;  // 视口垂直边缘向下的向量
+
+        // 计算到下一个像素的水平和垂直增量向量。
+        pixel_delta_u = viewport_u / image_width;
+        pixel_delta_v = viewport_v / image_height;
+
+        // 计算左上角像素的位置      
+        auto viewport_upper_left = center - (focus_dist * w) - viewport_u/2 - viewport_v/2;      
+        pixel00_loc = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v);
+
+        // 计算摄像机离焦盘基向量。
+        auto defocus_radius = focus_dist * tan(degrees_to_radians(defocus_angle / 2));
+        defocus_disk_u = u * defocus_radius;
+        defocus_disk_v = v * defocus_radius;    }
+
+
+    ray get_ray(int i, int j) const {        
+        // 为位置 i,j 处的像素获取随机采样的摄像机光线，该光线源自摄像机散焦盘
+        auto pixel_center = pixel00_loc + (i * pixel_delta_u) + (j * pixel_delta_v);
+        auto pixel_sample = pixel_center + pixel_sample_square();
+
+        auto ray_origin = (defocus_angle <= 0) ? center : defocus_disk_sample();        
+        auto ray_direction = pixel_sample - ray_origin;
+
+        return ray(ray_origin, ray_direction);
+    }
+
+    ...
+    point3 defocus_disk_sample() const {
+        // 返回摄像机离焦盘中的一个随机点
+        auto p = random_in_unit_disk();
+        return center + (p[0] * defocus_disk_u) + (p[1] * defocus_disk_v);
+    }
+    color ray_color(const ray& r, int depth, const hittable& world) const {
+    ...
+};
+```
+
+使用大光圈：
+
+```cpp
+// main.cc
+int main() {
+    ...
+
+    camera cam;
+
+    cam.aspect_ratio      = 16.0 / 9.0;
+    cam.image_width       = 400;
+    cam.samples_per_pixel = 100;
+    cam.max_depth         = 50;
+
+    cam.vfov     = 20;
+    cam.lookfrom = point3(-2,2,1);
+    cam.lookat   = point3(0,0,-1);
+    cam.vup      = vec3(0,1,0);
+
+    cam.defocus_angle = 10.0;
+    cam.focus_dist    = 3.4;
+    cam.render(world);
+}
+```
+
+可以得到：
+
+![具有景深的球体](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.22-depth-of-field.png)
+
+# 14. Where Next?
+
+## 14.1 最终渲染
+
+让我们制作本书封面上的图片————许多随机的球体。
+
+```cpp
+// main.cc
+int main() {
+    hittable_list world;
+
+    auto ground_material = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    world.add(make_shared<sphere>(point3(0,-1000,0), 1000, ground_material));
+
+    for (int a = -11; a < 11; a++) {
+        for (int b = -11; b < 11; b++) {
+            auto choose_mat = random_double();
+            point3 center(a + 0.9*random_double(), 0.2, b + 0.9*random_double());
+
+            if ((center - point3(4, 0.2, 0)).length() > 0.9) {
+                shared_ptr<material> sphere_material;
+
+                if (choose_mat < 0.8) {
+                    // diffuse
+                    auto albedo = color::random() * color::random();
+                    sphere_material = make_shared<lambertian>(albedo);
+                    world.add(make_shared<sphere>(center, 0.2, sphere_material));
+                } else if (choose_mat < 0.95) {
+                    // metal
+                    auto albedo = color::random(0.5, 1);
+                    auto fuzz = random_double(0, 0.5);
+                    sphere_material = make_shared<metal>(albedo, fuzz);
+                    world.add(make_shared<sphere>(center, 0.2, sphere_material));
+                } else {
+                    // glass
+                    sphere_material = make_shared<dielectric>(1.5);
+                    world.add(make_shared<sphere>(center, 0.2, sphere_material));
+                }
+            }
+        }
+    }
+
+    auto material1 = make_shared<dielectric>(1.5);
+    world.add(make_shared<sphere>(point3(0, 1, 0), 1.0, material1));
+
+    auto material2 = make_shared<lambertian>(color(0.4, 0.2, 0.1));
+    world.add(make_shared<sphere>(point3(-4, 1, 0), 1.0, material2));
+
+    auto material3 = make_shared<metal>(color(0.7, 0.6, 0.5), 0.0);
+    world.add(make_shared<sphere>(point3(4, 1, 0), 1.0, material3));
+    camera cam;
+
+    cam.aspect_ratio      = 16.0 / 9.0;
+    cam.image_width       = 1200;
+    cam.samples_per_pixel = 500;
+    cam.max_depth         = 50;
+
+    cam.vfov     = 20;
+    cam.lookfrom = point3(13,2,3);
+    cam.lookat   = point3(0,0,0);
+    cam.vup      = vec3(0,1,0);
+
+    cam.defocus_angle = 0.6;
+    cam.focus_dist    = 10.0;
+    cam.render(world);
+}
+```
+
+（请注意，上面的代码与项目示例代码略有不同：上面的`samples_per_pixel`设置为500以获得高质量图像，这将需要相当长的时间来渲染。示例代码使用值10是为了合理运行开发和验证时的时间。）
+
+这会得到：
+
+![最终场景](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.23-book1-final.jpg)
+
+您可能会注意到的一件有趣的事情是，玻璃球实际上没有阴影，这使它们看起来像是漂浮的。这不是一个错误——你在现实生活中很少看到玻璃球，它们看起来也有点奇怪，而且在阴天似乎确实漂浮着。玻璃球下方的大球体上的一个点仍然有大量的光线照射到它，因为天空被重新排序而不是被阻挡。
