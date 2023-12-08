@@ -1351,7 +1351,7 @@ int main() {
 
 # 8. 抗锯齿
 
-当你放大到目前为止渲染过的图像时，你可能会注意到图像边缘的“阶梯状”特性，这种现象通常被称为“走样”(*aliasing*)或“锯齿”(jaggies)。与此相反，真实相机拍摄的照片通常沿着边缘没有锯齿，因为边缘像素是前景和背景的混合。请考虑，与我们渲染的图像不同，真实的世界图像是连续的。换句话说，世界（以及它的任何真实图像）实际上具有无限的分辨率。我们可以通过对每个像素取多个样本的平均值来获得相同的效果。
+当你放大到目前为止渲染过的图像时，你可能会注意到图像边缘的“阶梯状”特性，这种现象通常被称为“走样”(*aliasing*)或“锯齿”(*jaggies*)。与此相反，真实相机拍摄的照片通常沿着边缘没有锯齿，因为边缘像素是前景和背景的混合。请考虑，与我们渲染的图像不同，真实的世界图像是连续的。换句话说，世界（以及它的任何真实图像）实际上具有无限的分辨率。我们可以通过对每个像素取多个样本的平均值来获得相同的效果。
 
 当单条光线穿过每个像素的中心时，我们执行通常所说的点采样(*point sampling*)的过程。点采样的问题可以通过渲染一个远处的小棋盘格来说明。如果这个棋盘格由一个8×8的黑白瓷砖网格组成，但只有四条射线击中它，那么所有四条射线可能只与白色瓷砖相交，或者只与黑色相交，或者是一些奇怪的组合。在现实世界中，当我们用眼睛远远地看到一个棋盘格时，我们会感知到它是灰色的，而不是黑白色的尖锐点。这是因为我们的眼睛自然地在做我们希望射线追踪器做的事情：整合落在渲染图像的特定（离散）区域上的光线（连续函数）。
 
@@ -1541,11 +1541,11 @@ int main() {
 
 不发光的漫射物体只会呈现周围环境的颜色，但它们确实会用自己的固有颜色来调节周围环境的颜色。从漫反射表面反射的光的方向是随机的，因此，如果我们将三束光线发送到两个漫反射表面之间的裂缝中，它们将具有不同的随机行为：
 
-![光线反射](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.09-light-bounce-20231128185709736.jpg)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.09-light-bounce-20231128185709736.jpg" alt="光线反射" />
 
 它们也可能被吸收而不是反射。表面越暗，光线被吸收的可能性就越大（这就是为什么它是暗的！）。事实上，任何随机化方向的算法都会产生看起来无光泽的表面。让我们从最直观的办法开始：**在所有方向上随机均匀地反射光线的表面**。对于这种材质，照射到表面的光线在远离表面的任何方向上都有相同的概率反弹。
 
-![地平线上的等距离反射](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.10-random-vec-horizon.jpg)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.10-random-vec-horizon.jpg" alt="地平线上的等距离反射" />
 
 这种非常直观的材质是最简单的漫反射类型，事实上，许多第一批光线追踪论文都使用了这种漫反射方法（在采用我们稍后将实现的更准确的方法之前）。我们目前没有办法随机反射光线，因此我们需要向矢量实用程序标头添加一些函数。我们首先需要的是生成任意随机向量的能力：
 
@@ -1579,7 +1579,7 @@ class vec3 {
 
 首先，我们将使用排除法在单位球体内生成随机向量。在单位立方体内选择一个随机点，其中$$ 𝑥$$、$$𝑦 $$和$$ 𝑧 $$的范围都是从 −1 到 +1，如果这个点在单位球体外部就排除它。
 
-![在找到一个更好的向量之前，两个向量被舍弃](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.11-sphere-vec.jpg)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.11-sphere-vec.jpg" alt="在找到一个更好的向量之前，两个向量被舍弃" />
 
 ```cpp
 // vec3.h
@@ -1600,7 +1600,7 @@ inline vec3 random_in_unit_sphere() {
 
 一旦我们在单位球面上有了一个随机向量，我们就需要对其进行标准化以获得单位球面上的向量。
 
-![标准化被成功被接受的向量](https://raytracing.github.io/images/fig-1.12-sphere-unit-vec.jpg)
+<img src="https://raytracing.github.io/images/fig-1.12-sphere-unit-vec.jpg" alt="标准化被成功被接受的向量" />
 
 ```cpp
 // vec3.h
@@ -1622,7 +1622,7 @@ inline vec3 random_unit_vector() {
 
 现在我们在单位球体的表面上有了一个随机向量，我们可以通过与表面法线进行比较来确定它是否在正确的半球上：
 
-![法向量告诉我们需要哪个半球](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.13-surface-normal-20231128191336982.jpg)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.13-surface-normal-20231128191336982.jpg" alt="法向量告诉我们需要哪个半球" />
 
 我们可以采用表面法线和随机向量的点积来确定它是否位于正确的半球中。**如果点积为正，则向量位于正确的半球中。如果点积为负，那么我们需要反转向量。**
 
@@ -1668,7 +1668,7 @@ class camera {
 
 ...事实上，我们确实得到了相当漂亮的灰色球体：
 
-![漫反射球体的第一次渲染](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.07-first-diffuse.png)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.07-first-diffuse.png" alt="漫反射球体的第一次渲染" />
 
 ## 9.2 限制子光线的数量
 
@@ -1739,7 +1739,7 @@ int main() {
 
 对于这个非常简单的场景，我们应该得到基本相同的结果：
 
-![有限次反弹的漫反射球体的第二次渲染](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.08-second-diffuse.png)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.08-second-diffuse.png" alt="有限次反弹的漫反射球体的第二次渲染" />
 
 ## 9.3 修复阴影痤疮
 
@@ -1772,19 +1772,19 @@ class camera {
 
 这样就解决了阴影痤疮问题。是的，确实是这么叫的。结果如下：
 
-![没有阴影痤疮的漫反射球体](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.09-no-acne.png)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.09-no-acne.png" alt="没有阴影痤疮的漫反射球体" />
 
 ## 9.4 真正的朗伯反射(*Lambertian Reflection*)
 
-均匀地在半球上散射反射光线可以产生漂亮的柔和漫反射模型，但我们肯定可以做得更好。更准确地表现真实漫反射物体的是朗伯分布(*Lambertian distribution*)。这种分布以与$$ cos𝜙 $$成比例的方式散射反射光线，其中$$ 𝜙 $$是反射光线与表面法线之间的角度。**这意味着反射光线最有可能在接近表面法线的方向上散射，而在远离法线的方向上散射的可能性较小。**这种非均匀的朗伯分布比我们之前的均匀散射更好地模拟了现实世界中的材料反射。
+均匀地在半球上散射反射光线可以产生漂亮的柔和漫反射模型，但我们肯定可以做得更好。更准确地表现真实漫反射物体的是朗伯分布(*Lambertian distribution*)。这种分布以与$$ cos\phi $$成比例的方式散射反射光线，其中$$ \phi $$是反射光线与表面法线之间的角度。**这意味着反射光线最有可能在接近表面法线的方向上散射，而在远离法线的方向上散射的可能性较小。**这种非均匀的朗伯分布比我们之前的均匀散射更好地模拟了现实世界中的材料反射。
 
-我们可以通过向法线向量添加一个随机单位向量来创建这种分布。在表面的交点处，有击中点$$ 𝐩 $$和表面的法线$$ 𝐧$$。在交点处，这个表面恰好有两个侧面，因此任何交点只能有两个唯一的与之相切的单位球体（每个表面的一侧一个）。这两个单位球体将被其半径的长度从表面上移开，对于单位球体来说，这个长度恰好是1。
+我们可以通过向法线向量添加一个随机单位向量来创建这x种分布。在表面的交点处，有击中点$$ P $$和表面的法线$$ n$$。在交点处，这个表面恰好有两个侧面，因此任何交点只能有两个唯一的与之相切的单位球体（每个表面的一侧一个）。这两个单位球体将被其半径的长度从表面上移开，对于单位球体来说，这个长度恰好是1。
 
-一个球体将朝着表面的法线$$𝐧$$的方向移开，另一个球体将朝着相反方向（$$−𝐧$$）移开。这给我们留下了两个单位大小的球体，它们只会在交点处与表面刚好接触。由此，一个球体的中心位于（$$𝐏+𝐧$$），另一个球体的中心位于（$$𝐏−𝐧$$）。位于（$$𝐏−𝐧$$）的球体被认为是在表面内部，而中心位于（$$𝐏+𝐧$$）的球体被认为是在表面外部。
+一个球体将朝着表面的法线$$𝐧$$的方向移开，另一个球体将朝着相反方向（$$−n$$）移开。这给我们留下了两个单位大小的球体，它们只会在交点处与表面刚好接触。由此，一个球体的中心位于（$$P+n$$），另一个球体的中心位于（$$𝐏−𝐧$$）。位于（$$P−n$$）的球体被认为是在表面内部，而中心位于（$$P+n$$）的球体被认为是在表面外部。
 
-我们想要选择与光线原点处于同一侧的切线单位球体。在这个单位半径球体上选择一个随机点 𝐒，并从击中点 𝐏 发送一条光线到随机点 𝐒（这是向量（𝐒−𝐏））：
+我们想要选择与光线原点处于同一侧的切线单位球体。在这个单位半径球体上选择一个随机点 $$S$$，并从击中点 $$P$$ 发送一条光线到随机点 $$S$$（这是向量（$$S−P$$））：
 
-![根据朗伯分布随机生成向量](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.14-rand-unitvec.jpg)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.14-rand-unitvec.jpg" alt="根据朗伯分布随机生成向量" />
 
 变化实际上相当小：
 
@@ -1812,7 +1812,7 @@ class camera {
 
 渲染后我们得到类似的图像：
 
-![朗伯球体的正确渲染](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.10-correct-lambertian.png)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.10-correct-lambertian.png" alt="朗伯球体的正确渲染" />
 
 在我们的两个球体组成的简单场景中，很难区分这两种漫反射方法的差异，但你应该能注意到两个重要的视觉差异：
 
@@ -1850,7 +1850,7 @@ class camera {
 
 我们在这个新的 10% 反射率下进行渲染。然后我们将反射率设置为 30%，再次渲染。我们重复 50%、70% 和最终的 90%。你可以在你选择的照片编辑器中从左到右叠加这些图像，你应该会得到一个非常好的视觉呈现，展示你选择的亮度范围的增加。这是我们到目前为止一直在使用的：
 
-![迄今为止渲染器的色域](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.11-linear-gamut.png)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.11-linear-gamut.png" alt="迄今为止渲染器的色域" />
 
 如果你仔细观察，或者使用颜色拾取器，你会注意到 50% 反射率的渲染（中间的那个）比白色和黑色之间的中间灰色（中灰色）要暗得多。事实上，70% 的反射器更接近中灰色。造成这种情况的原因是，几乎所有的计算机程序都假设图像在写入图像文件之前已经进行了“伽马校正”(*gamma corrected*)。这意味着 0 到 1 的值在存储为字节之前应用了某种转换。没有进行转换的数据写入的图像被称为线性空间(*linear space*)中的图像，而进行了转换的图像被称为伽马空间(*gamma space*)中的图像。你正在使用的图像查看器可能期望图像在伽马空间中，但我们给它的是线性空间中的图像。这就是我们的图像看起来不准确地暗的原因。
 
@@ -1889,7 +1889,7 @@ void write_color(std::ostream &out, color pixel_color, int samples_per_pixel) {
 
 使用这种伽马校正，我们现在得到了一个从暗到亮更加一致的渐变：
 
-![*两个漫反射球体的伽马校正渲染*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.12-gamma-gamut.png)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.12-gamma-gamut.png" alt="*两个漫反射球体的伽马校正渲染*" />
 
 # 10. 金属
 
@@ -2055,7 +2055,7 @@ class lambertian : public material {
 
 对于抛光金属，光线不会随机散射。关键问题是：光线如何从金属镜面反射？向量数学在这里是我们的朋友：
 
-![光线反射](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.15-reflection.jpg)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.15-reflection.jpg" alt="光线反射" />
 
 红色的反射光线方向只是$$ v+2b$$。在我们的设计中，$$n $$是单位向量，但$$ v $$可能不是。$$b $$的长度应该是$$ v⋅n$$。因为$$ v $$指向内侧，我们需要一个负号，得到：
 
@@ -2178,13 +2178,13 @@ int main() {
 
 这会得到：
 
-![img](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.13-metal-shiny.png)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.13-metal-shiny.png" alt="img" />
 
 ## 10.6 模糊反射
 
 我们还可以通过使用小球体并为光线选择新端点来随机化反射方向。我们将使用以原始端点为中心的球体表面的随机点，并按模糊因子进行缩放。
 
-![生成模糊反射光线](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.16-reflect-fuzzy.jpg)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.16-reflect-fuzzy.jpg" alt="生成模糊反射光线" />
 
 球体越大，反射就会越模糊。这意味着可以增加一个模糊度参数，即球体的半径（因此零表示没有扰动）。问题是对于大球体或切线光线，我们可能会在表面以下散射。我们可以让表面吸收这些光线。
 
@@ -2240,11 +2240,11 @@ int main() {
 
 折射由斯涅尔定律描述：
 $$
-𝜂⋅sin𝜃=𝜂^′⋅sin𝜃^′
+\eta⋅sin\theta=\eta^′⋅sin\theta^′
 $$
 其中$$ 𝜃 $$和$$ 𝜃^′ $$是**与法线的角度**，$$𝜂 $$和$$ 𝜂^′（$$发音为“eta”和“eta prime”）是**折射率**（通常空气=1.0，玻璃=1.3–1.7，钻石=2.4）。几何形状如下：
 
-![光线折射](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.17-refraction.jpg)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.17-refraction.jpg" alt="光线折射" />
 
 为了确定折射光线的方向，我们必须求解$$ sin𝜃^\prime$$：
 
@@ -2253,12 +2253,12 @@ sin𝜃^′=\frac{𝜂}{𝜂^′}⋅sin𝜃
 $$
 在表面的折射侧，有一条折射光线$$ 𝐑^′ $$和一个法线$$ 𝐧^′$$，它们之间存在一个角度$$ 𝜃^′$$。我们可以将$$ 𝐑^′ $$分解为与$$ 𝐧^′ $$垂直和平行的光线部分：
 $$
-𝐑^′=𝐑^′_⊥+𝐑^′_\parallel
+R^′=R^′_\perp+R^′_\parallel
 $$
 如果我们求解$$ 𝐑^′_⊥ $$和 $$𝐑^′_∥$$，我们得到：
 $$
-𝐑^′_⊥=\frac{𝜂}{𝜂^′}(𝐑+cos𝜃𝐧) \\
-𝐑^′_∥=−\sqrt{1−|𝐑^′_⊥|^2𝐧}
+R^′_\perp=\frac{\eta}{\eta^′}(R+cos\theta n) \\
+R^′_\parallel=−\sqrt{1−|R^′_\perp|^2n}
 $$
 
 如果你想的话，你可以自己证明这一点，但我们将把它当作事实并继续。本书的其余部分不需要你理解这个证明。
@@ -2266,16 +2266,16 @@ $$
 我们知道右侧每个项的值，除了$$ cos𝜃$$。众所周知，两个向量的点积可以用它们之间的夹角的余弦来解释：
 
 $$
-𝐚⋅𝐛=|𝐚||𝐛|cos𝜃
+a⋅b=|a||b|cos\theta
 $$
 
 如果我们限制$$ 𝐚 $$和$$ 𝐛 $$为单位向量：
 $$
-𝐚⋅𝐛=cos𝜃
+a⋅b=cos\theta
 $$
 我们现在可以用已知量重写$$ 𝐑^′_⊥$$：
 $$
-𝐑^′_⊥=\frac{𝜂}{𝜂^′}(𝐑+(−𝐑⋅𝐧)𝐧)
+R^′_\perp=\frac{\eta}{\eta^′}(R+(−R⋅n)n)
 $$
 
 当我们将它们重新组合在一起时，我们可以编写一个函数来计算$$𝐑^′$$：
@@ -2339,21 +2339,21 @@ auto material_right  = make_shared<metal>(color(0.8, 0.6, 0.2),1.0);
 
 这会得到以下结果：
 
-![始终折射的玻璃球](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.16-glass-always-refract.png)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.16-glass-always-refract.png" alt="始终折射的玻璃球" />
 
 ## 11.3 全内反射
 
-那绝对看起来不对劲。一个棘手的实际问题是，当光线处于具有较高折射率的材料中时，斯涅尔定律没有实数解，因此不可能发生折射。如果我们回顾斯涅尔定律和$$ sin𝜃^′ $$的推导：
+那绝对看起来不对劲。一个棘手的实际问题是，当光线处于具有较高折射率的材料中时，斯涅尔定律没有实数解，因此不可能发生折射。如果我们回顾斯涅尔定律和$$ sin\theta^′ $$的推导：
 $$
-sin𝜃^′=\frac{𝜂}{𝜂^′}⋅sin𝜃
+sin\theta^′=\frac{\eta}{\eta^′}⋅sin\theta
 $$
 如果光线在玻璃内部，而外部是空气（$$𝜂=1.5，𝜂^′=1.0$$）：
 $$
-sin𝜃^′=\frac{1.5}{1.0}⋅sin𝜃
+sin\theta^′=\frac{1.5}{1.0}⋅sin\theta
 $$
 $$sin𝜃^′$$的值不能大于 1。所以，如果 
 $$
-\frac{1.5}{1.0}⋅sin𝜃>1.0
+\frac{1.5}{1.0}⋅sin\theta>1.0
 $$
 方程两边的等式被打破，解不存在。如果解不存在，玻璃就不能折射，因此必须反射光线：
 
@@ -2372,11 +2372,11 @@ if (refraction_ratio * sin_theta > 1.0) {
 
 我们可以使用三角函数的特性求解 $$sin\theta$$：
 $$
-sin𝜃=\sqrt{1−cos^2𝜃}
+sin\theta=\sqrt{1−cos^2\theta}
 $$
 和
 $$
-cos𝜃=𝐑⋅𝐧
+cos\theta=R⋅n
 $$
 
 ```cpp
@@ -2439,7 +2439,7 @@ auto material_right  = make_shared<metal>(color(0.8, 0.6, 0.2), 0.0);
 
 我们可以得到：
 
-![*有时会折射的玻璃球*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.17-glass-sometimes-refract.png)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.17-glass-sometimes-refract.png" alt="*有时会折射的玻璃球*" />
 
 ## 11.4 Schlick 近似 
 
@@ -2497,7 +2497,7 @@ world.add(make_shared<sphere>(point3(-1.0,    0.0, -1.0),   0.5, material_left))
 
 这会得到：
 
-![*空心玻璃球*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.18-glass-hollow.png)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.18-glass-hollow.png" alt="*空心玻璃球*" />
 
 # 12 可定位相机
 
@@ -2507,9 +2507,9 @@ world.add(make_shared<sphere>(point3(-1.0,    0.0, -1.0),   0.5, material_left))
 
 首先，我们将保持光线从原点出发，朝向 $$ z=−1 $$ 平面。我们可以把它设置为 $$z=−2$$ 平面，或其他什么平面，只要我们使 $$h$$ 成为与该距离的比率。这是我们的设置：
 
-![摄像机观察几何（侧面）](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.18-cam-view-geom.jpg)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.18-cam-view-geom.jpg" alt="摄像机观察几何（侧面）" />
 
-这意味着 $$h=tan(\frac{θ}{2})$$。我们的摄像机现在变成了：
+这意味着 $$h=tan(\frac{\theta}{2})$$。我们的摄像机现在变成了：
 
 ```cpp
 // camera.h
@@ -2584,7 +2584,7 @@ int main() {
 
 这给了我们这样的渲染：
 
-![*广角视图*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.19-wide-view.png)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.19-wide-view.png" alt="*广角视图*" />
 
 ## 12.2 定位和定向摄像机 
 
@@ -2592,11 +2592,11 @@ int main() {
 
 我们还需要一种指定摄像机的横滚或侧倾的方式：围绕 `lookat-lookfrom` 轴的旋转。另一种思考方式是，即使你保持 `lookfrom` 和 `lookat` 不变，你仍然可以围绕你的鼻子旋转你的头。我们需要的是一种为摄像机指定“向上”向量的方式。
 
-![*相机视图方向*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.19-cam-view-dir.jpg)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.19-cam-view-dir.jpg" alt="*相机视图方向*" />
 
 我们可以指定任何我们想要的向上向量，只要它不平行于视线方向。将这个向上的向量投影到与视线方向正交的平面上，以获得相对于摄像机的上方向量。我使用将其命名为“视图上方”（*vup*）向量的常见惯例。经过几次叉积和向量标准化后，我们现在有了一个完整的正交基（$$u,v,w$$）来描述我们摄像机的方向。$$u$$ 是指向摄像机右侧的单位向量，$$v$$ 是指向摄像机上方的单位向量，$$w$$ 是指向与视线方向相反的单位向量（因为我们使用右手坐标系），摄像机中心位于原点。
 
-![*相机视图向上方向*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.20-cam-view-up.jpg)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.20-cam-view-up.jpg" alt="*相机视图向上方向*" />
 
 像之前我们的固定摄像机面向 $$−Z$$ 一样，我们任意视角的摄像机面向 $$−w$$。请记住，我们可以，但不必使用$$(0,1,0)$$来指定 vup。这很方便，会自然地保持你的摄像机水平，直到你决定疯狂的尝试摄像机角度。
 
@@ -2694,7 +2694,7 @@ int main() {
 
 可以得到：
 
-![远景](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.20-view-distant.png)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.20-view-distant.png" alt="远景" />
 
 我们可以改变视野：
 
@@ -2705,7 +2705,7 @@ cam.vfov     = 20;
 
 可以得到：
 
-![放大](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.21-view-zoom.png)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.21-view-zoom.png" alt="放大" />
 
 ## 13. 虚焦模糊
 
@@ -2721,7 +2721,7 @@ cam.vfov     = 20;
 
 真实相机有一个复杂的复合透镜。对于我们的代码，我们可以模拟顺序：传感器，然后是透镜，然后是光圈。然后我们可以弄清楚在哪里发送光线，并在计算后翻转图像（图像被投影在胶片上是倒置的）。然而，图形学人员通常使用薄透镜近似：
 
-![*相机镜头模型*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.21-cam-lens.jpg)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.21-cam-lens.jpg" alt="*相机镜头模型*" />
 
 我们不需要模拟相机的任何内部 — 为了渲染相机外部的图像，那将是不必要的复杂工作。相反，我通常从一个无限薄的圆形“透镜”开始发射光线，并将它们发送到焦平面（距离透镜焦长）上的像素处，3D世界中该平面上的所有东西都完美聚焦。
 
@@ -2734,7 +2734,7 @@ cam.vfov     = 20;
 5. 从当前像素位置周围区域选择随机图像采样位置。 
 6. 相机从透镜上的随机点发射光线，穿过当前图像采样位置。
 
-![*相机焦平面*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.22-cam-film-plane.jpg)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-1.22-cam-film-plane.jpg" alt="*相机焦平面*" />
 
 ## 13.2 生成采样光线
 
@@ -2873,7 +2873,7 @@ int main() {
 
 可以得到：
 
-![具有景深的球体](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.22-depth-of-field.png)
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-1.22-depth-of-field.png" alt="具有景深的球体" />
 
 # 14. Where Next?
 
