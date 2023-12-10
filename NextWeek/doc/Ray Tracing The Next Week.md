@@ -742,3 +742,131 @@ int main() {
 
 # 4. 纹理映射
 
+在计算机图形学中，纹理映射是指**将材料效果应用于场景中的对象的过程**。这里的“纹理”(*texture*)指的是效果，而“映射”(*mapping*)是指在数学上将一个空间映射到另一个空间的概念。这种效果可以是任何材料属性：颜色、光泽度、凹凸几何（称为凹凸映射），甚至是材料的存在（用于创建表面的剪切区域）。
+
+最常见的纹理映射类型是将图像映射到对象的表面上，定义对象表面每一点的颜色。在实践中，我们实际上是反向实现这一过程：**给定对象上的某个点，我们会查找由纹理映射定义的颜色**。
+
+首先，我们将使纹理颜色成为程序化的，并将创建一个恒定颜色的纹理映射。大多数程序将恒定的RGB颜色和纹理保存在不同的类中，所以你可以自由地做出不同的选择，但我非常相信这种架构，因为能够将任何颜色变成纹理是很棒的。
+
+为了进行纹理查找，我们需要一个纹理坐标。这个坐标可以通过多种方式定义，我们将在进展中发展这个想法。目前，我们将传入二维纹理坐标。按照惯例，纹理坐标被命名为 $$u$$ 和 $$v$$。对于恒定纹理，每一对 $$(u,v)$$ 坐标都会产生一个恒定的颜色，所以我们实际上可以完全忽略坐标。然而，其他类型的纹理将需要这些坐标，所以我们在方法接口中保留这些坐标。
+
+我们纹理类的主要方法是 `color value(...)` 方法，它根据输入坐标返回纹理颜色。除了取点的纹理坐标 $$u$$ 和 $$v$$ 外，我们还提供了问题点的位置，原因稍后会变得明显。
+
+## 4.1 恒定颜色纹理
+
+```cpp
+// texture.h
+#ifndef TEXTURE_H
+#define TEXTURE_H
+
+#include "rtweekend.h"
+
+class texture {
+  public:
+    virtual ~texture() = default;
+
+    virtual color value(double u, double v, const point3& p) const = 0;
+};
+
+class solid_color : public texture {
+  public:
+    solid_color(color c) : color_value(c) {}
+
+    solid_color(double red, double green, double blue) : solid_color(color(red,green,blue)) {}
+
+    color value(double u, double v, const point3& p) const override {
+        return color_value;
+    }
+
+  private:
+    color color_value;
+};
+
+#endif
+```
+
+我们需要更新 `hit_record` 结构以存储光线-对象碰撞点的 $$u,v$$ 表面坐标。
+
+我们还需要计算每种`hittable`类型的给定点的 $$(u,v)$$ 纹理坐标。
+
+```cpp
+// hittable.h
+class hit_record {
+  public:
+    vec3 p;
+    vec3 normal;
+    shared_ptr<material> mat;
+    double t;
+    double u;
+    double v;
+    bool front_face;
+    ...
+```
+
+我们还需要计算每种`hittable`上给定点 $$(u,v)$$ 的纹理坐标。
+
+## 4.2 实体纹理: 棋盘格纹理 
+
+实体（或空间）纹理仅依赖于每个点在三维空间中的位置。你可以将实体纹理视为给空间本身的所有点上色，而不是给该空间中的特定对象上色。因此，对象可以在改变位置时穿过纹理的颜色，尽管通常你会固定对象与实体纹理之间的关系。
+
+为了探索空间纹理，我们将实现一个空间 `checker_texture` 类，该类实现了三维棋盘图案。由于空间纹理函数由空间中给定位置驱动，因此纹理 `value()` 函数忽略 `u` 和 `v` 参数，仅使用 `p` 参数。
+
+为了实现棋盘格图案，我们首先计算输入点的每个分量的地板值。我们可以截断坐标，但这会将值拉向零，从而在零的两侧得到相同的颜色。地板函数总是将值向左移动到整数值（朝向负无穷大）。给定这三个整数结果$$(\lfloor x\rfloor ,\lfloor y\rfloor,\lfloor z\rfloor)$$我们取它们的总和并计算模二的结果，这会得到 0 或 1。**零映射到偶数颜色，一映射到奇数颜色**。
+
+最后，我们向纹理添加一个缩放因子，以便我们能够控制场景中棋盘图案的大小。
+
+```cpp
+// texture.h
+class checker_texture : public texture {
+  public:
+    checker_texture(double _scale, shared_ptr<texture> _even, shared_ptr<texture> _odd)
+      : inv_scale(1.0 / _scale), even(_even), odd(_odd) {}
+
+    checker_texture(double _scale, color c1, color c2)
+      : inv_scale(1.0 / _scale),
+        even(make_shared<solid_color>(c1)),
+        odd(make_shared<solid_color>(c2))
+    {}
+
+    color value(double u, double v, const point3& p) const override {
+        auto xInteger = static_cast<int>(std::floor(inv_scale * p.x()));
+        auto yInteger = static_cast<int>(std::floor(inv_scale * p.y()));
+        auto zInteger = static_cast<int>(std::floor(inv_scale * p.z()));
+
+        bool isEven = (xInteger + yInteger + zInteger) % 2 == 0;
+
+        return isEven ? even->value(u, v, p) : odd->value(u, v, p);
+    }
+
+  private:
+    double inv_scale;
+    shared_ptr<texture> even;
+    shared_ptr<texture> odd;
+};
+```
+
+这些棋盘奇偶参数可以指向恒定纹理或某些其他程序化纹理。这符合 Pat Hanrahan 在 1980 年代引入的着色器网络的精神。
+
+如果我们将其添加到我们的 `random_scene()` 函数的基础球体中：
+
+```cpp
+// main.cc
+...
+#include "texture.h"
+
+
+void random_spheres() {
+    hittable_list world;
+
+    auto checker = make_shared<checker_texture>(0.32, color(.2, .3, .1), color(.9, .9, .9));
+    world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+    for (int a = -11; a < 11; a++) {
+    ...
+}
+...
+```
+
+我们得到：
+
+![*棋盘格地面上的球体*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.02-checker-ground.png)

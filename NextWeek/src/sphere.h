@@ -6,7 +6,6 @@
 
 class sphere : public hittable {
 public:
-    // 静态球体
     sphere(point3 _center, double _radius, shared_ptr<material> _material)
         : center1(_center)
         , radius(_radius)
@@ -16,7 +15,6 @@ public:
         bbox      = aabb(center1 - rvec, center1 + rvec);
     }
 
-    // 移动球体
     sphere(point3 _center1, point3 _center2, double _radius, shared_ptr<material> _material)
         : center1(_center1)
         , radius(_radius)
