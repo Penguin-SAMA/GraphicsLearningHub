@@ -7,7 +7,7 @@ add_files("src/*.cpp")
 
 on_run(function(target)
 	os.mkdir("image") -- 确保 image 目录存在
-	os.execv(target:targetfile(), {}, { stdout = "image/image.ppm" })
+	os.execv(target:targetfile(), {}, { stdout = "images/image.ppm" })
 end)
 
 --

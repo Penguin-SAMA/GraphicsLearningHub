@@ -849,6 +849,8 @@ class checker_texture : public texture {
 
 如果我们将其添加到我们的 `random_scene()` 函数的基础球体中：
 
+> 译者注：这里代码有问题，`lambertian`那边还没修改，直接加这段是不能成功编译的，可以等4.4全部写完了再编译测试。
+
 ```cpp
 // main.cc
 ...
@@ -870,3 +872,383 @@ void random_spheres() {
 我们得到：
 
 ![*棋盘格地面上的球体*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.02-checker-ground.png)
+
+## 4.3 渲染实体棋盘纹理 
+
+我们将在我们的程序中添加第二个场景，并在本书进展过程中继续添加更多场景。为了帮助这一点，我们将设置一个 `switch` 语句来选择给定运行的所需场景。这是一种粗糙的方法，但我们试图保持事情非常简单，并专注于光线追踪。在你自己的光线追踪器中，你可能希望使用不同的方法，例如支持命令行参数。
+
+这是我们的 `main.cc` 在重构为我们单个随机球体场景后的样子。将 `main()` 重命名为 `random_spheres()`，并添加一个新的 `main()` 函数来调用它：
+
+```cpp
+// main.cc
+#include "rtweekend.h"
+
+#include "camera.h"
+#include "color.h"
+#include "hittable_list.h"
+#include "material.h"
+#include "sphere.h"
+
+
+void random_spheres() {
+    hittable_list world;
+
+    auto ground_material = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    world.add(make_shared<sphere>(point3(0,-1000,0), 1000, ground_material));
+
+    ...
+
+    cam.render(world);
+}
+
+int main() {
+    random_spheres();
+}
+```
+
+现在添加一个场景，其中有两个棋盘球体，一个在另一个上面。
+
+```cpp
+// main.cc
+#include "rtweekend.h"
+
+#include "camera.h"
+#include "color.h"
+#include "hittable_list.h"
+#include "material.h"
+#include "sphere.h"
+
+
+void random_spheres() {
+    ...
+}
+
+void two_spheres() {
+    hittable_list world;
+
+    auto checker = make_shared<checker_texture>(0.8, color(.2, .3, .1), color(.9, .9, .9));
+
+    world.add(make_shared<sphere>(point3(0,-10, 0), 10, make_shared<lambertian>(checker)));
+    world.add(make_shared<sphere>(point3(0, 10, 0), 10, make_shared<lambertian>(checker)));
+
+    camera cam;
+
+    cam.aspect_ratio      = 16.0 / 9.0;
+    cam.image_width       = 400;
+    cam.samples_per_pixel = 100;
+    cam.max_depth         = 50;
+
+    cam.vfov     = 20;
+    cam.lookfrom = point3(13,2,3);
+    cam.lookat   = point3(0,0,0);
+    cam.vup      = vec3(0,1,0);
+
+    cam.defocus_angle = 0;
+
+    cam.render(world);
+}
+
+int main() {
+    switch (2) {
+        case 1: random_spheres(); break;
+        case 2: two_spheres();    break;
+    }
+}
+```
+
+我们得到这个结果：
+
+![棋盘格球体](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.03-checker-spheres.png)
+
+你可能会认为结果看起来有点奇怪。由于 `checker_texture` 是一个空间纹理，我们实际上是在看球体表面穿过三维棋盘空间。在许多情况下，这是完美的，或者至少足够的。在许多其他情况下，我们真的想在我们的对象表面获得一致的效果。接下来将介绍这种方法。
+
+## 4.4 球体的纹理坐标 
+
+恒定颜色纹理不使用坐标。实体（或空间）纹理使用空间中点的坐标。现在是时候使用 $$u,v$$ 纹理坐标了。这些坐标指定了二维源图像中的位置（或在某些二维参数化空间中）。为此，我们需要一种方法来找到三维对象表面上任何点的 $$u,v$$ 坐标。这种映射是完全任意的，但通常你希望覆盖整个表面，并且能够以某种有意义的方式缩放、定向和拉伸二维图像。我们将从派生出获取球体的 $$u,v$$ 坐标的方案开始。
+
+对于球体，纹理坐标通常基于某种形式的经度和纬度，即球坐标。所以我们计算球坐标中的 $$(\theta,\phi)$$，其中 $$\theta$$ 是从底部极点（即从 $$-Y$$）向上的角度，$$\phi$$ 是绕 $$Y$$ 轴的角度（从 $$-X$$ 到 $$+Z$$ 到 $$+X$$ 到 $$-Z$$ 再回到 $$-X$$）。
+
+我们希望将 $$\theta$$ 和 $$\phi$$ 映射到 $$[0,1]$$ 范围内的纹理坐标 $$u$$ 和 $$v$$，其中 $$(u=0,v=0)$$ 对应于纹理的左下角。因此，从 $$(\theta,\phi)$$ 到 $$(u,v)$$ 的标准化将是：
+$$
+u=\frac{\phi}{2\pi} \\
+v=\frac{\theta}{\pi}
+$$
+为了计算位于原点中心的单位球面上给定点的 $$\theta$$ 和 $$\phi$$，我们从对应的笛卡尔坐标公式开始：
+$$
+y=-cos(\theta)\\
+x=-cos(\phi)sin(\theta)\\
+z=sin(\phi)sin(\theta)
+$$
+我们需要反转这些方程以求解 $$\theta$$ 和 $$\phi$$。由于方便的 `<cmath>` 函数 `atan2()`，它接受任何与正弦和余弦成比例的一对数字并返回角度，我们可以传入 $$x$$ 和 $$z$$（$$sin(\theta)$$ 抵消）来解算 $$\phi$$：
+$$
+\phi=atan2(z, -x)
+$$
+`atan2()` 返回的值范围是 $$-\pi$$ 到 $$\pi$$，但它们从 $$0$$ 到 $$\pi$$，然后翻转到 $$-\pi$$ 并回到 $$0$$。虽然这在数学上是正确的，但我们希望 $$u$$ 的范围是从 $$0$$ 到 $$1$$ 的，而不是从 $$0$$ 到 $$\frac{1}{2}$$ 然后从 $$-\frac{1}{2}$$ 到 $$0$$。幸运的是，
+$$
+atan2(a, b) = atan2(-a, -b) + \pi
+$$
+第二个公式产生 $$0$$ 到 $$2\pi$$ 的值，因此，我们可以通过以下方式计算 $$\phi$$：
+$$
+\phi=atan2(-z, x) + \pi
+$$
+$$θ$$ 的推导更为直接：
+$$
+\theta =arccos(-y)
+$$
+所以对于球体，$$(u, v)$$ 坐标的计算是通过一个实用函数完成的，该函数接受位于原点中心的单位球上的点，并计算 $$u$$ 和 $$v$$：
+
+```cpp
+// sphere.h
+class sphere : public hittable {
+  ...
+  private:
+    ...
+    static void get_sphere_uv(const point3& p, double& u, double& v) {
+        // p: 以原点为中心、半径为 1 的球面上的给定点
+        // u: 从 X=-1 开始返回的 Y 轴角度值 [0,1]。
+        // v: 返回从 Y=-1 到 Y=+1 的角度值 [0,1]。
+        //     <1 0 0> yields <0.50 0.50>       <-1  0  0> yields <0.00 0.50>
+        //     <0 1 0> yields <0.50 1.00>       < 0 -1  0> yields <0.50 0.00>
+        //     <0 0 1> yields <0.25 0.50>       < 0  0 -1> yields <0.75 0.50>
+
+        auto theta = acos(-p.y());
+        auto phi = atan2(-p.z(), p.x()) + pi;
+
+        u = phi / (2*pi);
+        v = theta / pi;
+    }
+};
+```
+
+更新 `sphere::hit()` 函数，使用此函数更新碰撞记录 UV 坐标。
+
+```cpp
+// sphere.h
+class sphere : public hittable {
+  public:
+    ...
+    bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
+        ...
+
+        rec.t = root;
+        rec.p = r.at(rec.t);
+        vec3 outward_normal = (rec.p - center) / radius;
+        rec.set_face_normal(r, outward_normal);        get_sphere_uv(outward_normal, rec.u, rec.v);        rec.mat = mat;
+
+        return true;
+    }
+    ...
+};
+```
+
+现在，我们可以通过将 `const color& a` 替换为纹理指针来制作带有纹理的材料：
+
+```cpp
+// material.h
+#include "texture.h"
+...
+class lambertian : public material {
+  public:    lambertian(const color& a) : albedo(make_shared<solid_color>(a)) {}
+    lambertian(shared_ptr<texture> a) : albedo(a) {}
+    bool scatter(const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered)
+    const override {
+        auto scatter_direction = rec.normal + random_unit_vector();
+
+        // Catch degenerate scatter direction
+        if (scatter_direction.near_zero())
+            scatter_direction = rec.normal;
+
+        scattered = ray(rec.p, scatter_direction, r_in.time());        attenuation = albedo->value(rec.u, rec.v, rec.p);        return true;
+    }
+
+  private:    shared_ptr<texture> albedo;};
+```
+
+从碰撞点 $$P$$ 出发，我们计算表面坐标 $$(u, v)$$。然后我们使用这些坐标索引到我们的程序化实体纹理（如大理石）中。我们还可以读入图像，并使用二维 $$(u, v)$$ 纹理坐标索引到图像中。
+
+使用缩放的 $$(u, v)$$ 直接在图像中的一种方法是将 $$u$$ 和 $$v$$ 四舍五入为整数，并将其用作 $$(i, j)$$ 像素。这很尴尬，因为我们不想在改变图像分辨率时必须更改代码。因此，图形学中最普遍的非正式标准之一是使用纹理坐标而不是图像像素坐标。这只是图像中某种形式的分数位置。例如，对于 $$N_x$$ 乘 $$N_y$$ 图像中的像素 $$(i, j)$$，图像纹理位置是：
+$$
+u = \frac{i}{N_x - 1}\\
+v = \frac{j}{N_y - 1}
+$$
+这只是一个零碎的位置。
+
+## 4.5 访问纹理图像数据
+
+现在是时候创建一个包含图像的纹理类了。我将使用我最喜欢的图像实用工具 [stb_image](https://github.com/nothings/stb)。它将图像数据读入一个大的无符号字符数组中。这些只是打包的 RGB，每个分量范围是 [0,255]（从黑色到全白）。为了让加载图像文件更加容易，我们提供了一个辅助类来管理所有这些 —— `rtw_image`。下面的列表假设你已经将 `stb_image.h` 头文件复制到名为 `external` 的文件夹中。根据你的目录结构进行调整。
+
+```cpp
+// rtw_stb_image.h
+#ifndef RTW_STB_IMAGE_H
+#define RTW_STB_IMAGE_H
+
+// Disable strict warnings for this header from the Microsoft Visual C++ compiler.
+#ifdef _MSC_VER
+    #pragma warning (push, 0)
+#endif
+
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_FAILURE_USERMSG
+#include "external/stb_image.h"
+
+#include <cstdlib>
+#include <iostream>
+
+class rtw_image {
+  public:
+    rtw_image() : data(nullptr) {}
+
+    rtw_image(const char* image_filename) {
+        // Loads image data from the specified file. If the RTW_IMAGES environment variable is
+        // defined, looks only in that directory for the image file. If the image was not found,
+        // searches for the specified image file first from the current directory, then in the
+        // images/ subdirectory, then the _parent's_ images/ subdirectory, and then _that_
+        // parent, on so on, for six levels up. If the image was not loaded successfully,
+        // width() and height() will return 0.
+
+        auto filename = std::string(image_filename);
+        auto imagedir = getenv("RTW_IMAGES");
+
+        // Hunt for the image file in some likely locations.
+        if (imagedir && load(std::string(imagedir) + "/" + image_filename)) return;
+        if (load(filename)) return;
+        if (load("images/" + filename)) return;
+        if (load("../images/" + filename)) return;
+        if (load("../../images/" + filename)) return;
+        if (load("../../../images/" + filename)) return;
+        if (load("../../../../images/" + filename)) return;
+        if (load("../../../../../images/" + filename)) return;
+        if (load("../../../../../../images/" + filename)) return;
+
+        std::cerr << "ERROR: Could not load image file '" << image_filename << "'.\n";
+    }
+
+    ~rtw_image() { STBI_FREE(data); }
+
+    bool load(const std::string filename) {
+        // Loads image data from the given file name. Returns true if the load succeeded.
+        auto n = bytes_per_pixel; // Dummy out parameter: original components per pixel
+        data = stbi_load(filename.c_str(), &image_width, &image_height, &n, bytes_per_pixel);
+        bytes_per_scanline = image_width * bytes_per_pixel;
+        return data != nullptr;
+    }
+
+    int width()  const { return (data == nullptr) ? 0 : image_width; }
+    int height() const { return (data == nullptr) ? 0 : image_height; }
+
+    const unsigned char* pixel_data(int x, int y) const {
+        // Return the address of the three bytes of the pixel at x,y (or magenta if no data).
+        static unsigned char magenta[] = { 255, 0, 255 };
+        if (data == nullptr) return magenta;
+
+        x = clamp(x, 0, image_width);
+        y = clamp(y, 0, image_height);
+
+        return data + y*bytes_per_scanline + x*bytes_per_pixel;
+    }
+
+  private:
+    const int bytes_per_pixel = 3;
+    unsigned char *data;
+    int image_width, image_height;
+    int bytes_per_scanline;
+
+    static int clamp(int x, int low, int high) {
+        // Return the value clamped to the range [low, high).
+        if (x < low) return low;
+        if (x < high) return x;
+        return high - 1;
+    }
+};
+
+// Restore MSVC compiler warnings
+#ifdef _MSC_VER
+    #pragma warning (pop)
+#endif
+
+#endif
+```
+
+如果你在 `C` 或 `C++` 以外的语言中编写你的实现，你需要找到（或编写）一个提供类似功能的图像加载库。
+
+`image_texture` 类使用 `rtw_image` 类：
+
+```cpp
+// texture.h
+#include "rtweekend.h"
+#include "rtw_stb_image.h"
+#include "perlin.h"
+
+...
+class image_texture : public texture {
+  public:
+    image_texture(const char* filename) : image(filename) {}
+
+    color value(double u, double v, const point3& p) const override {
+        // 如果没有纹理数据，则返回纯青色作为调试辅助。
+        if (image.height() <= 0) return color(0,1,1);
+
+        // 将输入纹理坐标锁定为 [0,1] x [1,0] 之间 
+        u = interval(0,1).clamp(u);
+        v = 1.0 - interval(0,1).clamp(v);  // 将 V 翻转到图像坐标
+
+        auto i = static_cast<int>(u * image.width());
+        auto j = static_cast<int>(v * image.height());
+        auto pixel = image.pixel_data(i,j);
+
+        auto color_scale = 1.0 / 255.0;
+        return color(color_scale*pixel[0], color_scale*pixel[1], color_scale*pixel[2]);
+    }
+
+  private:
+    rtw_image image;
+};
+```
+
+## 4.6 渲染图像纹理
+
+我刚从网上随机找到一张地球图片 —— 任何标准投影都可以满足我们的需求。
+
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/earthmap.jpg" alt="earthmap.jpg" />
+
+以下是从文件中读取图像然后将其分配给漫反射材料的代码：
+
+```cpp
+// main.cc
+void earth() {
+    auto earth_texture = make_shared<image_texture>("earthmap.jpg");
+    auto earth_surface = make_shared<lambertian>(earth_texture);
+    auto globe = make_shared<sphere>(point3(0,0,0), 2, earth_surface);
+
+    camera cam;
+
+    cam.aspect_ratio      = 16.0 / 9.0;
+    cam.image_width       = 400;
+    cam.samples_per_pixel = 100;
+    cam.max_depth         = 50;
+
+    cam.vfov     = 20;
+    cam.lookfrom = point3(0,0,12);
+    cam.lookat   = point3(0,0,0);
+    cam.vup      = vec3(0,1,0);
+
+    cam.defocus_angle = 0;
+
+    cam.render(hittable_list(globe));
+}
+
+int main() {
+    switch (3) {
+        case 1:  random_spheres(); break;
+        case 2:  two_spheres();    break;
+        case 3:  earth();          break;
+    }
+}
+```
+
+我们开始看到所有颜色都是纹理的强大之处 —— 我们可以将任何类型的纹理分配给 `lambertian` 材料，而 `lambertian` 不需要意识到它。
+
+如果照片返回的是中间有一个大的青色球体，那么 `stb_image` 没有找到你的地球地图照片。程序将在可执行文件的同一目录中查找文件。确保将地球图复制到你的构建目录中，或者重写 `earth()` 函数以指向其他地方。
+
+# 5. 柏林噪声
+
