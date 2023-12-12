@@ -1252,3 +1252,460 @@ int main() {
 
 # 5. 柏林噪声
 
+为了获得酷炫的实体纹理，大多数人使用某种形式的柏林噪声。这些噪声以其发明者肯·柏林（*Ken Perlin*）的名字命名。柏林纹理不会像这样返回白噪声：
+
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.06-white-noise.jpg" alt="白噪声" />
+
+相反，它返回类似于模糊白噪声的东西：
+
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.07-white-noise-blurred.jpg" alt="模糊的白噪声" />
+
+柏林噪声的一个关键部分是它是可重复的：它以一个三维点作为输入，并始终返回相同的随机数。附近的点返回相似的数字。柏林噪声的另一个重要部分是它必须简单和快速，因此通常以 *hack* 的方式完成。我将根据 *Andrew Kensler* 的描述逐步构建该 *hack*。
+
+## 5.1 使用随机数字块 
+
+我们可以用三维随机数数组将整个空间铺满，并以块的形式使用它们。你会得到一些明显重复的块状图案：
+
+![平铺随机图案](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.08-tile-random.jpg)
+
+我们不妨使用某种哈希方法来混淆这一点，而不是铺砌。这需要一些辅助代码来实现：
+
+```cpp
+// perlin.h
+#ifndef PERLIN_H
+#define PERLIN_H
+
+#include "rtweekend.h"
+
+class perlin {
+  public:
+    perlin() {
+        ranfloat = new double[point_count];
+        for (int i = 0; i < point_count; ++i) {
+            ranfloat[i] = random_double();
+        }
+
+        perm_x = perlin_generate_perm();
+        perm_y = perlin_generate_perm();
+        perm_z = perlin_generate_perm();
+    }
+
+    ~perlin() {
+        delete[] ranfloat;
+        delete[] perm_x;
+        delete[] perm_y;
+        delete[] perm_z;
+    }
+
+    double noise(const point3& p) const {
+        auto i = static_cast<int>(4*p.x()) & 255;
+        auto j = static_cast<int>(4*p.y()) & 255;
+        auto k = static_cast<int>(4*p.z()) & 255;
+
+        return ranfloat[perm_x[i] ^ perm_y[j] ^ perm_z[k]];
+    }
+
+  private:
+    static const int point_count = 256;
+    double* ranfloat;
+    int* perm_x;
+    int* perm_y;
+    int* perm_z;
+
+    static int* perlin_generate_perm() {
+        auto p = new int[point_count];
+
+        for (int i = 0; i < perlin::point_count; i++)
+            p[i] = i;
+
+        permute(p, point_count);
+
+        return p;
+    }
+
+    static void permute(int* p, int n) {
+        for (int i = n-1; i > 0; i--) {
+            int target = random_int(0, i);
+            int tmp = p[i];
+            p[i] = p[target];
+            p[target] = tmp;
+        }
+    }
+};
+
+#endif
+```
+
+现在，如果我们创建一个实际的纹理，它将这些介于 0 和 1 之间的浮点数转化为灰色：
+
+```cpp
+// texture.h
+#include "perlin.h"
+
+class noise_texture : public texture {
+  public:
+    noise_texture() {}
+
+    color value(double u, double v, const point3& p) const override {
+        return color(1,1,1) * noise.noise(p);
+    }
+
+  private:
+    perlin noise;
+};
+```
+
+我们可以在一些球体上使用这种纹理：
+
+```cpp
+// main.cc
+void two_perlin_spheres() {
+    hittable_list world;
+
+    auto pertext = make_shared<noise_texture>();
+    world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(pertext)));
+    world.add(make_shared<sphere>(point3(0,2,0), 2, make_shared<lambertian>(pertext)));
+
+    camera cam;
+
+    cam.aspect_ratio      = 16.0 / 9.0;
+    cam.image_width       = 400;
+    cam.samples_per_pixel = 100;
+    cam.max_depth         = 50;
+
+    cam.vfov     = 20;
+    cam.lookfrom = point3(13,2,3);
+    cam.lookat   = point3(0,0,0);
+    cam.vup      = vec3(0,1,0);
+
+    cam.defocus_angle = 0;
+
+    cam.render(world);
+}
+int main() {    
+    switch (4) {        
+        case 1:  random_spheres();     break;
+        case 2:  two_spheres();        break;
+        case 3:  earth();              break;        
+        case 4:  two_perlin_spheres(); break;    
+    x}
+}
+```
+
+添加哈希确实如我们所愿地混乱了图案：
+
+![散列随机纹理](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.09-hash-random.png)
+
+## 5.2 平滑处理结果 
+
+为了使其平滑，我们可以进行线性插值：
+
+```cpp
+// perlin.h
+class perlin {
+  public:
+    ...
+    double noise(const point3& p) const {        auto u = p.x() - floor(p.x());
+        auto v = p.y() - floor(p.y());
+        auto w = p.z() - floor(p.z());
+
+        auto i = static_cast<int>(floor(p.x()));
+        auto j = static_cast<int>(floor(p.y()));
+        auto k = static_cast<int>(floor(p.z()));
+        double c[2][2][2];
+
+        for (int di=0; di < 2; di++)
+            for (int dj=0; dj < 2; dj++)
+                for (int dk=0; dk < 2; dk++)
+                    c[di][dj][dk] = ranfloat[
+                        perm_x[(i+di) & 255] ^
+                        perm_y[(j+dj) & 255] ^
+                        perm_z[(k+dk) & 255]
+                    ];
+
+        return trilinear_interp(c, u, v, w);    }
+    ...
+
+  private:
+    ...    static double trilinear_interp(double c[2][2][2], double u, double v, double w) {
+        auto accum = 0.0;
+        for (int i=0; i < 2; i++)
+            for (int j=0; j < 2; j++)
+                for (int k=0; k < 2; k++)
+                    accum += (i*u + (1-i)*(1-u))*
+                            (j*v + (1-j)*(1-v))*
+                            (k*w + (1-k)*(1-w))*c[i][j][k];
+
+        return accum;
+    }};
+```
+
+我们得到：
+
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.10-perlin-trilerp.png" alt="*采用三线性插值的 Perlin 纹理*" />
+
+## 5.3 使用埃尔米特平滑改进 
+
+平滑处理后，效果有所改善，但仍有明显的网格特征。其中有些是马赫带，这是已知的线性插值色彩的感知假象。一个标准的技巧是使用埃尔米特(*Hermite*)三次方对插值进行舍入：
+
+```cpp
+// perlin.h
+class perlin (
+  public:
+    ...
+    double noise(const point3& p) const {
+        auto u = p.x() - floor(p.x());
+        auto v = p.y() - floor(p.y());
+        auto w = p.z() - floor(p.z());
+        u = u*u*(3-2*u);
+        v = v*v*(3-2*v);
+        w = w*w*(3-2*w);
+        auto i = static_cast<int>(floor(p.x()));
+        auto j = static_cast<int>(floor(p.y()));
+        auto k = static_cast<int>(floor(p.z()));
+        ...
+```
+
+这会产生更平滑的图像:
+
+![*Perlin 纹理，三线性插值，平滑*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.11-perlin-trilerp-smooth.png)
+
+## 5.4 调整频率 
+
+它的频率也有点低。我们可以缩放输入点以使其变化更快：
+
+```cpp
+// texture.h
+class noise_texture : public texture {
+  public:
+    noise_texture() {}
+
+    noise_texture(double sc) : scale(sc) {}
+    
+    color value(double u, double v, const point3& p) const override {        
+        return color(1,1,1) * noise.noise(scale * p);    
+    }
+
+  private:
+    perlin noise;    
+    double scale;
+};
+```
+
+然后我们将该缩放添加到 `two_perlin_spheres()` 场景描述中：
+
+```cpp
+// main.cc
+void two_perlin_spheres() {
+    ...
+    auto pertext = make_shared<noise_texture>(4);
+    world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(pertext)));
+    world.add(make_shared<sphere>(point3(0, 2, 0), 2, make_shared<lambertian>(pertext)));
+
+    camera cam;
+    ...
+}
+```
+
+![*Perlin 纹理，频率较高*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.12-perlin-hifreq.png)
+
+## 5.5 在晶格点上使用随机向量 
+
+这看起来仍然有点块状，可能是因为图案的最小值和最大值总是精确地落在整数 x/y/z 上。*Ken Perlin*的非常巧妙的技巧是改为在晶格点上放置随机单位向量（而不仅仅是浮点数），并使用点积使最小值和最大值偏离晶格。因此，首先我们需要将随机浮点数更改为随机向量。这些向量是任何合理的不规则方向集，我不会费心让它们完全均匀：
+
+```cpp
+// perlin.h
+class perlin {
+  public:
+    perlin() {
+        ranvec = new vec3[point_count];
+        for (int i = 0; i < point_count; ++i) {
+            ranvec[i] = unit_vector(vec3::random(-1,1));
+        }
+
+        perm_x = perlin_generate_perm();
+        perm_y = perlin_generate_perm();
+        perm_z = perlin_generate_perm();
+    }
+
+    ~perlin() {
+        delete[] ranvec;
+        delete[] perm_x;
+        delete[] perm_y;
+        delete[] perm_z;
+    }
+    ...
+
+  private:
+    static const int point_count = 256;
+    vec3* ranvec;
+    int* perm_x;
+    int* perm_y;
+    int* perm_z;
+    ...
+};
+```
+
+Perlin类的 `noise()` 方法现在是：
+
+```cpp
+// perlin.h
+class perlin {
+  public:
+    ...
+    double noise(const point3& p) const {
+        auto u = p.x() - floor(p.x());
+        auto v = p.y() - floor(p.y());
+        auto w = p.z() - floor(p.z());
+        auto i = static_cast<int>(floor(p.x()));
+        auto j = static_cast<int>(floor(p.y()));
+        auto k = static_cast<int>(floor(p.z()));
+        vec3 c[2][2][2];
+
+        for (int di=0; di < 2; di++)
+            for (int dj=0; dj < 2; dj++)
+                for (int dk=0; dk < 2; dk++)
+                    c[di][dj][dk] = ranvec[
+                        perm_x[(i+di) & 255] ^
+                        perm_y[(j+dj) & 255] ^
+                        perm_z[(k+dk) & 255]
+                    ];
+
+        return perlin_interp(c, u, v, w);
+    }
+    ...
+};
+```
+
+插值变得更复杂一些：
+
+```cpp
+// perlin.h
+class perlin {
+  ...
+  private:
+    ...
+    static double perlin_interp(vec3 c[2][2][2], double u, double v, double w) {
+        auto uu = u*u*(3-2*u);
+        auto vv = v*v*(3-2*v);
+        auto ww = w*w*(3-2*w);
+        auto accum = 0.0;
+
+        for (int i=0; i < 2; i++)
+            for (int j=0; j < 2; j++)
+                for (int k=0; k < 2; k++) {
+                    vec3 weight_v(u-i, v-j, w-k);
+                    accum += (i*uu + (1-i)*(1-uu))
+                           * (j*vv + (1-j)*(1-vv))
+                           * (k*ww + (1-k)*(1-ww))
+                           * dot(c[i][j][k], weight_v);
+                }
+
+        return accum;
+    }
+    ...
+};
+```
+
+*Perlin*解释的输出可能返回负值。这些负值将传递给我们的`gamma`函数的 `sqrt()` 函数，并转换为 `NaN`。我们将*perlin*输出的结果重新映射到 0 和 1 之间。
+
+```cpp
+// texture.h
+class noise_texture : public texture {
+  public:
+    noise_texture() {}
+
+    noise_texture(double sc) : scale(sc) {}
+
+    color value(double u, double v, const point3& p) const override {
+        return color(1,1,1) * 0.5 * (1.0 + noise.noise(scale * p));
+    }
+
+  private:
+    perlin noise;
+    double scale;
+};
+```
+
+这最终给出了更合理的外观：
+
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.13-perlin-shift.png" alt="*Perlin 纹理，偏移整数值*" />
+
+## 5.6 引入湍流 
+
+通常会使用具有多个叠加频率的复合噪声。这通常称为湍流(*turbulence*)，是对噪声的多次调用的总和：
+
+```cpp
+// perlin.h
+class perlin {
+  ...
+  public:
+    ...
+    double turb(const point3& p, int depth=7) const {
+        auto accum = 0.0;
+        auto temp_p = p;
+        auto weight = 1.0;
+
+        for (int i = 0; i < depth; i++) {
+            accum += weight*noise(temp_p);
+            weight *= 0.5;
+            temp_p *= 2;
+        }
+
+        return fabs(accum);
+    }
+    ...
+```
+
+这里 `fabs()` 是在 `<cmath>` 中定义的绝对值函数。
+
+```cpp
+class noise_texture : public texture {
+  public:
+    noise_texture() {}
+
+    noise_texture(double sc) : scale(sc) {}
+
+    color value(double u, double v, const point3& p) const override {
+        auto s = scale * p;
+        return color(1,1,1) * noise.turb(s);
+    }
+
+  private:
+    perlin noise;
+    double scale;
+};
+```
+
+直接使用时，湍流会产生一种类似伪装网的外观：
+
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.14-perlin-turb.png" alt="*带有湍流的柏林纹理*" />
+
+## 5.7 调整相位 
+
+然而，通常湍流是间接使用的。例如，程序化实体纹理的`hello world`是一个简单的大理石状纹理。基本思想是使颜色与类似正弦函数的东西成比例，并使用湍流来调整相位（即在 $$sin(x)$$ 中移动 $$x$$ ），这使条纹呈波浪状。注释掉直接的噪声和湍流，给出一个类似大理石的效果是：
+
+```cpp
+// texture.h
+class noise_texture : public texture {
+  public:
+    noise_texture() {}
+
+    noise_texture(double sc) : scale(sc) {}
+
+    color value(double u, double v, const point3& p) const override {
+        auto s = scale * p;
+        return color(1,1,1) * 0.5 * (1 + sin(s.z() + 10*noise.turb(s)));
+    }
+
+  private:
+    perlin noise;
+    double scale;
+};
+```
+
+产生以下结果：
+
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.15-perlin-marble.png" alt="*Perlin 噪声，大理石纹理*" />
+
+# 6. 四边形
