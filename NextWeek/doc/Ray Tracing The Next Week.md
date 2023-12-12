@@ -1709,3 +1709,205 @@ class noise_texture : public texture {
 <img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.15-perlin-marble.png" alt="*Perlin 噪声，大理石纹理*" />
 
 # 6. 四边形
+
+在这系列的三本书中，我们已经用球体作为唯一的几何原始形状走过了一半以上的路程。现在是时候添加我们的第二种原始形状：四边形了。
+
+## 6.1 定义四边形 
+
+虽然我们将新的原始形状命名为四边形，但从技术上讲，它实际上是一个平行四边形（对边平行），而不是一般的四边形。为了我们的目的，我们将使用三个几何实体来定义一个四边形：
+
+1. $$Q$$，左下角。 
+2. $$u$$，代表第一边的向量。$$Q + u$$给出与$$Q$$相邻的一个角。 
+3. $$v$$，代表第二边的向量。$$Q+v$$给出与$$Q$$相邻的另一个角。 
+
+四边形与$$Q$$对角的角由$$Q+u+v$$给出。这些值是三维的，尽管四边形本身是二维对象。例如，一个角在原点并在$$Z$$方向延伸两个单位，在$$Y$$方向延伸一个单位的四边形将具有值$$Q=(0,0,0)$$,$$u=(0,0,2)$$,$$v=(0,1,0)$$。
+
+下图说明了四边形的组成部分。
+
+![*四边形组件*](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-2.05-quad-def.jpg)
+
+四边形是平面的，所以如果四边形位于$$XY$$、$$YZ$$或$$ZX$$平面中，它的轴对齐包围盒将在一个维度上厚度为零。这可能导致与光线相交的数值问题，但我们可以通过填充任何维度为零的包围盒来解决这个问题。填充是可以的，因为我们没有改变四边形的交点；我们只是扩大其包围盒以消除数值问题的可能性，而且边界只是对实际形状的粗略近似。为此，我们添加了一个新的 `aabb::pad()` 方法来解决这个问题：
+
+```cpp
+// aabb.h
+...
+class aabb {
+  public:
+    ...
+    aabb(const aabb& box0, const aabb& box1) {
+        x = interval(box0.x, box1.x);
+        y = interval(box0.y, box1.y);
+        z = interval(box0.z, box1.z);
+    }
+
+    aabb pad() {
+        // 返回一个 AABB，该 AABB 的任何一边都不比某个 delta 值窄，必要时进行填充。
+        double delta = 0.0001;
+        interval new_x = (x.size() >= delta) ? x : x.expand(delta);
+        interval new_y = (y.size() >= delta) ? y : y.expand(delta);
+        interval new_z = (z.size() >= delta) ? z : z.expand(delta);
+
+        return aabb(new_x, new_y, new_z);
+    }
+```
+
+现在我们准备好了新的四边形类的第一个草图：
+
+```cpp
+// quad.h
+#ifndef QUAD_H
+#define QUAD_H
+
+#include "rtweekend.h"
+
+#include "hittable.h"
+
+class quad : public hittable {
+  public:
+    quad(const point3& _Q, const vec3& _u, const vec3& _v, shared_ptr<material> m)
+      : Q(_Q), u(_u), v(_v), mat(m)
+    {
+        set_bounding_box();
+    }
+
+    virtual void set_bounding_box() {
+        bbox = aabb(Q, Q + u + v).pad();
+    }
+
+    aabb bounding_box() const override { return bbox; }
+
+    bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
+        return false; // To be implemented
+    }
+
+  private:
+    point3 Q;
+    vec3 u, v;
+    shared_ptr<material> mat;
+    aabb bbox;
+};
+
+#endif
+```
+
+## 6.2 光线-平面相交 
+
+正如你在之前的列表中看到的，`quad::hit()` 还有待实现。就像对于球体一样，我们需要确定给定光线是否与原始形状相交，如果相交，这种交点的各种属性（命中点、法线、纹理坐标等）。
+
+光线与四边形的相交将通过三个步骤确定：
+
+1. 找到包含该四边形的平面， 
+2. 解决光线与包含四边形的平面的交点问题， 
+3. 确定击中点是否在四边形内。 
+
+我们将首先解决第二个步骤，解决一般的光线-平面相交问题。
+
+球体通常是第一个学到的光线追踪原始形状，因为它们的隐式公式使得解决光线交点非常容易。与球体一样，平面也有一个隐式公式，我们可以使用它们的隐式公式来产生一个解决光线-平面相交的算法。实际上，光线-平面相交比光线-球体相交还要容易解决。
+
+你可能已经知道这个平面的隐式公式：
+$$
+Ax+By+Cz+D=0
+$$
+其中$$A,B,C,D$$是常数，而$$x,y,z$$是任何位于平面上的点$$(x,y,z)$$的值。因此，平面就是所有满足上述公式的点$$(x,y,z)$$的集合。稍微简化一下使用这个备选公式：
+$$
+Ax+By+Cz=D
+$$
+（我们没有改变D的符号，因为它只是我们稍后会弄清楚的某个常数。）
+
+这是一个直观的方式来思考这个公式：给定垂直于法向量$$n=(A,B,C)$$的平面，以及位置向量$$v=(x,y,z)$$（即从原点到平面上任何一点的向量），那么我们可以使用点积来求解$$D$$：
+$$
+n\cdot v = D
+$$
+对于平面上的任何位置。这是上面给出的$$Ax+By+Cz=D$$的等效公式，只不过现在用向量表示。
+
+现在要找到与某个光线$$R(t)=P+td$$的交点。把光线方程代入，我们得到
+
+
+$$
+n \cdot (P+td) = D
+$$
+求解$$t$$:
+$$
+n \cdot P + n\cdot td = D\\
+n \cdot P + t(n\cdot d) = D\\
+t = \frac{D - n \cdot P}{n \cdot d}
+$$
+这就给出了$$t$$的值，我们可以将其代入光线方程来找到交点。请注意，如果光线与平面平行，分母$$n\cdot d$$将为零。在这种情况下，我们可以立即记录光线与平面之间的未命中。对于其他原始图形，如果光线的$$t$$参数小于最小可接受值，我们也会记录未命中。
+
+好了，我们可以找到光线与包含给定四边形的平面之间的交点。事实上，我们可以使用这种方法来测试任何平面原始图形，比如三角形和圆盘（稍后再谈）。
+
+## 6.3 寻找包含给定四边形的平面 
+
+我们已经解决了上面的第二步：解决光线-平面相交问题，假设我们有平面方程。为此，我们需要处理第一步：找到包含四边形的平面的方程。我们有四边形参数$$Q$$、$$u$$和$$v$$，想要得到由这三个值定义的四边形包含的平面的相应方程。
+
+幸运的是，这很简单。回想一下，在方程$$Ax+By+Cz=D$$中，$$(A,B,C)$$代表法向量。要得到这个，我们只需使用两个边向量$$u$$和$$v$$的叉积：
+$$
+n=unit\_vector(u\times v)
+$$
+平面被定义为满足方程$$Ax+By+Cz=D$$的所有点$$(x,y,z)$$。好了，我们知道$$Q$$在平面上，所以这足以求出$$D$$：
+$$
+\begin{aligned}
+D&=𝑛_𝑥𝑄_𝑥+𝑛_𝑦𝑄_𝑦+𝑛_𝑧𝑄_𝑧\\
+&=n⋅Q
+\end{aligned}
+$$
+将平面值添加到四边形类中：
+
+```cpp
+// quad.h
+class quad : public hittable {
+  public:
+    quad(const point3& _Q, const vec3& _u, const vec3& _v, shared_ptr<material> m)
+      : Q(_Q), u(_u), v(_v), mat(m)
+    {
+        auto n = cross(u, v);
+        normal = unit_vector(n);
+        D = dot(normal, Q);
+
+        set_bounding_box();
+    }
+    ...
+
+  private:
+    point3 Q;
+    vec3 u, v;
+    shared_ptr<material> mat;
+    aabb bbox;
+    vec3 normal;
+    double D;
+};
+```
+
+我们将使用`normal`和$$D$$两个值来找到给定射线与包含四边形的平面之间的交点。
+
+作为过渡，让我们实现`hit()`方法来处理包含四边形的无限平面。
+
+```cpp
+// quad.h
+class quad : public hittable {
+    ...
+    bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
+        auto denom = dot(normal, r.direction());
+
+        // No hit if the ray is parallel to the plane.
+        if (fabs(denom) < 1e-8)
+            return false;
+
+        // Return false if the hit point parameter t is outside the ray interval.
+        auto t = (D - dot(normal, r.origin())) / denom;
+        if (!ray_t.contains(t))
+            return false;
+
+        auto intersection = r.at(t);
+
+        rec.t = t;
+        rec.p = intersection;
+        rec.mat = mat;
+        rec.set_face_normal(r, normal);
+
+        return true;
+    }
+    ...
+```
+
+## 6.4 在平面上定位点
