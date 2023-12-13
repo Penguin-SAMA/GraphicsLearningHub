@@ -1,6 +1,6 @@
 add_rules("mode.debug", "mode.release")
 
-target("oneWeekend")
+target("nextWeek")
 set_kind("binary")
 set_languages("c++17")
 add_files("src/*.cpp")

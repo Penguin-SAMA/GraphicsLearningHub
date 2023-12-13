@@ -1889,11 +1889,11 @@ class quad : public hittable {
     bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
         auto denom = dot(normal, r.direction());
 
-        // No hit if the ray is parallel to the plane.
+        // 如果光线与平面平行，则不会命中。
         if (fabs(denom) < 1e-8)
             return false;
 
-        // Return false if the hit point parameter t is outside the ray interval.
+        // 如果命中点参数 t 位于光线区间之外，则返回 false。
         auto t = (D - dot(normal, r.origin())) / denom;
         if (!ray_t.contains(t))
             return false;
@@ -1911,3 +1911,1027 @@ class quad : public hittable {
 ```
 
 ## 6.4 在平面上定位点
+
+在这个阶段，交点位于包含四边形的平面上，但它可能位于平面的任何地方：光线-平面交点可能在四边形内部或外部。我们需要测试位于四边形内部的交点（命中），并排除位于外部的点（未命中）。为了确定一个点相对于四边形的位置，并为交点分配纹理坐标，我们需要在平面上定位交点。
+
+为此，我们将为平面构建一个坐标框架——一种定位平面上任何点的方式。我们已经在使用我们的三维空间的坐标框架——这是由原点$$O$$和三个基向量$$x$$、$$y$$和$$z$$定义的。
+
+由于平面是一个二维结构，我们只需要一个平面原点$$Q$$和两个基向量：$$u$$和$$v$$。通常，轴是彼此垂直的。然而，为了覆盖整个空间，这并不需要这样——你只需要两个不平行的轴。
+
+![光线平面相交](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-2.06-ray-plane.jpg)
+
+考虑上图作为一个例子。光线$$R$$与平面相交，产生交点$$P$$（不要与上面的光线原点$$P$$混淆）。根据平面向量$$u$$和$$v$$的测量，上面例子中的交点$$P$$位于$$Q+(1)u+(\frac{1}{2})v$$。换句话说，交点$$P$$的$$UV$$（平面）坐标是$$(1,\frac{1}{2})$$。
+
+通常，给定某个任意点$$P$$，我们寻找两个标量值$$\alpha$$和$$\beta$$，使得
+$$
+P=Q+\alpha  u+\beta v
+$$
+如果$$u$$和$$v$$保证彼此垂直（在它们之间形成90°角），那么这将是一个简单的问题，只需使用点积将$$P$$投影到每个基向量$$u$$和$$v$$上。然而，由于我们没有限制$$u$$和$$v$$垂直，所以在数学上有点棘手。
+$$
+P=Q+\alpha u+\beta v \\
+p=P−Q=\alpha u+\beta v
+$$
+在这里，$$P$$是交点，$$p$$是从$$Q$$到$$P$$的向量。
+
+分别与$$u$$和$$v$$交叉上述方程：
+$$
+\begin{aligned}
+\bf u \times p &= \bf u \times (\alpha u + \beta v)\\
+&= \bf u \times \alpha u + u \times \beta v\\
+&= \bf \alpha(u \times u) + \beta (u \times v)
+\end{aligned}
+$$
+
+$$
+\begin{aligned}
+\bf v \times p &= \bf v \times (\alpha u + \beta v)\\
+&= \bf v \times \alpha u + v \times \beta v\\
+&= \bf \alpha(v \times u) + \beta (v \times v)
+\end{aligned}
+$$
+
+由于任何向量与其自身的叉积都为零，这些方程简化为
+$$
+\bf v \times p = \alpha(v\times u)\\
+\bf u \times p = \beta (u \times v)
+$$
+现在求解系数$$\alpha$$和$$\beta$$。如果你是向量数学的新手，你可能会尝试除以$$\bf u \times v$$和$$\bf v \times u$$，但你**不能除以向量**。相反，我们可以对上述方程的两边进行点积运算，将两边都简化为标量，然后进行除法。
+$$
+\bf n \cdot (v\times p) = n \cdot \alpha(v \times u)\\
+\bf n \cdot (u \times p) = n \cdot \beta(u \times v)
+$$
+现在分离系数就是简单的除法问题：
+$$
+\bf \alpha = \frac{n\cdot (v\times p)}{n\cdot(v\times u)}\\
+\bf \beta = \frac{n\cdot (u\times p)}{n\cdot(u\times v)}
+$$
+反转$$\alpha$$的分子和分母的叉积（回想一下，$$\bf a \times b = -b \times a$$）给我们两个系数的共同分母：
+$$
+\bf \alpha = \frac{n\cdot (p\times v)}{n\cdot(u\times v)}\\
+\bf \beta = \frac{n\cdot (u\times p)}{n\cdot(u\times v)}
+$$
+现在我们可以进行最后一次简化，计算一个向量$$\bf w$$，它对于平面的基础框架中的任何平面点$$P$$都是恒定的：
+$$
+\bf w = \frac{n}{n \cdot (u \times v)}=\frac{n}{n \cdot n} \\
+\bf \alpha = w \cdot (p \times v)\\
+\bf \beta = w \cdot (u \times p)
+$$
+向量$$\bf w$$对于给定的四边形是恒定的，所以我们将缓存这个值。
+
+```cpp
+// quad.h
+class quad : public hittable {
+  public:
+    quad(const point3& _Q, const vec3& _u, const vec3& _v, shared_ptr<material> m)
+      : Q(_Q), u(_u), v(_v), mat(m)
+    {
+        auto n = cross(u, v);
+        normal = unit_vector(n);
+        D = dot(normal, Q);
+        w = n / dot(n,n);
+
+        set_bounding_box();
+    }
+    ...
+
+  private:
+    point3 Q;
+    vec3 u, v;
+    shared_ptr<material> mat;
+    aabb bbox;
+    vec3 normal;
+    double D;
+    vec3 w;
+};
+```
+
+## 6.5 使用UV坐标对交点进行内部测试 
+
+现在我们已经得到了交点的平面坐标$$\alpha$$和$$\beta$$，我们可以轻松地使用这些坐标来确定交点是否在四边形内部——也就是说，光线是否实际击中了四边形。
+
+平面被划分为坐标区域，如下所示：
+
+![四边形坐标](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-2.07-quad-coords.jpg)
+
+因此，要查看具有平面坐标$$(\alpha, \beta)$$的点是否位于四边形内部，它只需要满足以下标准：
+
+1. $$0 \leq \alpha \leq 1 $$
+2. $$0 \leq \beta \leq 1 $$
+
+这是实现四边形原始形状所需的最后一部分。
+
+在这里稍作停顿，考虑一下，如果你使用$$(\alpha, \beta)$$坐标来确定一个点是否位于四边形（平行四边形）内部，不难想象使用这些相同的二维坐标来确定交点是否位于任何其他二维（平面）原始形状内部！
+
+我们将把这些额外的二维形状作为练习题留给读者，这取决于你的探索欲望。可以考虑三角形、圆盘和圆环（所有这些都非常容易）。你甚至可以根据纹理贴图的像素或 *Mandelbrot* 形状创建剪切模板！
+
+为了使这种实验更容易一些，我们将从`hit`方法中分离出$(\alpha,\beta)$内部测试方法。
+
+```cpp
+//quad.h
+...
+#include <cmath>
+
+class quad : public hittable {
+  public:
+    ...
+
+    bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
+        auto denom = dot(normal, r.direction());
+
+        // No hit if the ray is parallel to the plane.
+        if (fabs(denom) < 1e-8)
+            return false;
+
+        // Return false if the hit point parameter t is outside the ray interval.
+        auto t = (D - dot(normal, r.origin())) / denom;
+        if (!ray_t.contains(t))
+            return false;
+
+        // Determine the hit point lies within the planar shape using its plane coordinates.
+        auto intersection = r.at(t);
+        vec3 planar_hitpt_vector = intersection - Q;
+        auto alpha = dot(w, cross(planar_hitpt_vector, v));
+        auto beta = dot(w, cross(u, planar_hitpt_vector));
+
+        if (!is_interior(alpha, beta, rec))
+            return false;
+
+        // Ray hits the 2D shape; set the rest of the hit record and return true.
+        rec.t = t;
+        rec.p = intersection;
+        rec.mat = mat;
+        rec.set_face_normal(r, normal);
+
+        return true;
+    }
+
+    virtual bool is_interior(double a, double b, hit_record& rec) const {
+        // Given the hit point in plane coordinates, return false if it is outside the
+        // primitive, otherwise set the hit record UV coordinates and return true.
+
+        if ((a < 0) || (1 < a) || (b < 0) || (1 < b))
+            return false;
+
+        rec.u = a;
+        rec.v = b;
+        return true;
+    }
+    ...
+};
+
+#endif
+```
+
+现在我们添加一个新的场景来展示我们的新四边形原始形状：
+
+```cpp
+// main.cpp
+...
+#include "quad.h"
+...
+void quads() {
+    hittable_list world;
+
+    // Materials
+    auto left_red     = make_shared<lambertian>(color(1.0, 0.2, 0.2));
+    auto back_green   = make_shared<lambertian>(color(0.2, 1.0, 0.2));
+    auto right_blue   = make_shared<lambertian>(color(0.2, 0.2, 1.0));
+    auto upper_orange = make_shared<lambertian>(color(1.0, 0.5, 0.0));
+    auto lower_teal   = make_shared<lambertian>(color(0.2, 0.8, 0.8));
+
+    // Quads
+    world.add(make_shared<quad>(point3(-3,-2, 5), vec3(0, 0,-4), vec3(0, 4, 0), left_red));
+    world.add(make_shared<quad>(point3(-2,-2, 0), vec3(4, 0, 0), vec3(0, 4, 0), back_green));
+    world.add(make_shared<quad>(point3( 3,-2, 1), vec3(0, 0, 4), vec3(0, 4, 0), right_blue));
+    world.add(make_shared<quad>(point3(-2, 3, 1), vec3(4, 0, 0), vec3(0, 0, 4), upper_orange));
+    world.add(make_shared<quad>(point3(-2,-3, 5), vec3(4, 0, 0), vec3(0, 0,-4), lower_teal));
+
+    camera cam;
+
+    cam.aspect_ratio      = 1.0;
+    cam.image_width       = 400;
+    cam.samples_per_pixel = 100;
+    cam.max_depth         = 50;
+
+    cam.vfov     = 80;
+    cam.lookfrom = point3(0,0,9);
+    cam.lookat   = point3(0,0,0);
+    cam.vup      = vec3(0,1,0);
+
+    cam.defocus_angle = 0;
+
+    cam.render(world);
+}
+
+int main() {
+    switch (5) {
+        case 1:  random_spheres();     break;
+        case 2:  two_spheres();        break;
+        case 3:  earth();              break;
+        case 4:  two_perlin_spheres(); break;
+        case 5:  quads();              break;
+    }
+}
+```
+
+![四边形](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.16-quads.png)
+
+# 7. 光照
+
+光照是光线追踪的关键组成部分。早期简单的光线追踪器使用抽象光源，比如空间中的点或方向。现代方法有更多基于物理的光源，它们具有位置和大小。要创建这样的光源，我们需要能够将任何普通对象转变成能够向我们的场景发射光的东西。
+
+## 7.1 自发光材料 
+
+首先，让我们制作一个发光材料。我们需要添加一个发射函数（我们也可以将其添加到 `hit_record` 中————这是设计品味的问题）。像背景一样，它只告诉光线它是什么颜色，并且不进行反射。这非常简单：
+
+```cpp
+// material.h
+class diffuse_light : public material {
+  public:
+    diffuse_light(shared_ptr<texture> a) : emit(a) {}
+    diffuse_light(color c) : emit(make_shared<solid_color>(c)) {}
+
+    bool scatter(const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered)
+    const override {
+        return false;
+    }
+
+    color emitted(double u, double v, const point3& p) const override {
+        return emit->value(u, v, p);
+    }
+
+  private:
+    shared_ptr<texture> emit;
+};
+```
+
+为了避免让所有非自发光材料实现 `emitted()`，我让基类返回黑色：
+
+```cpp
+// material.h
+class material {
+  public:
+    ...
+
+    virtual color emitted(double u, double v, const point3& p) const {
+        return color(0,0,0);
+    }
+
+    virtual bool scatter(
+        const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered
+    ) const = 0;
+};
+```
+
+## 7.2 向射线颜色函数中添加背景色 
+
+接下来，我们希望有一个纯黑色的背景，这样场景中的唯一光源就来自发光体。为此，我们将向 `ray_color` 函数中添加一个背景色参数，并注意新的 `color_from_emission` 值。
+
+```cpp
+// camera.h
+class camera {
+  public:
+    double aspect_ratio      = 1.0;  // Ratio of image width over height
+    int    image_width       = 100;  // Rendered image width in pixel count
+    int    samples_per_pixel = 10;   // Count of random samples for each pixel
+    int    max_depth         = 10;   // Maximum number of ray bounces into scene
+    color  background;               // Scene background color
+
+    ...
+
+  private:
+    ...
+    color ray_color(const ray& r, int depth, const hittable& world) const {
+        hit_record rec;
+
+        // 如果我们超过了光线反弹限制，则不会收集更多的光线。
+        if (depth <= 0)
+            return color(0,0,0);
+
+        // 如果光线没有击中任何物体，则返回背景颜色。
+        if (!world.hit(r, interval(0.001, infinity), rec))
+            return background;
+
+        ray scattered;
+        color attenuation;
+        color color_from_emission = rec.mat->emitted(rec.u, rec.v, rec.p);
+
+        if (!rec.mat->scatter(r, rec, attenuation, scattered))
+            return color_from_emission;
+
+        color color_from_scatter = attenuation * ray_color(scattered, depth-1, world);
+
+        return color_from_emission + color_from_scatter;
+    }
+};
+```
+
+更新 `main()` 为之前的场景设置背景色：
+
+```cpp
+// main.cc
+void random_spheres() {
+    ...
+    camera cam;
+
+    cam.aspect_ratio      = 16.0 / 9.0;
+    cam.image_width       = 400;
+    cam.samples_per_pixel = 100;
+    cam.max_depth         = 50;
+    cam.background        = color(0.70, 0.80, 1.00);
+    ...
+}
+
+void two_spheres() {
+    ...
+    camera cam;
+
+    cam.aspect_ratio      = 16.0 / 9.0;
+    cam.image_width       = 400;
+    cam.samples_per_pixel = 100;
+    cam.max_depth         = 50;
+    cam.background        = color(0.70, 0.80, 1.00);
+    ...
+}
+
+void earth() {
+    ...
+    camera cam;
+
+    cam.aspect_ratio      = 16.0 / 9.0;
+    cam.image_width       = 400;
+    cam.samples_per_pixel = 100;
+    cam.max_depth         = 50;
+    cam.background        = color(0.70, 0.80, 1.00);
+    ...
+}
+
+void two_perlin_spheres() {
+    ...
+    camera cam;
+
+    cam.aspect_ratio      = 16.0 / 9.0;
+    cam.image_width       = 400;
+    cam.samples_per_pixel = 100;
+    cam.max_depth         = 50;
+    cam.background        = color(0.70, 0.80, 1.00);
+    ...
+}
+
+void quads() {
+    ...
+    camera cam;
+
+    cam.aspect_ratio      = 1.0;
+    cam.image_width       = 400;
+    cam.samples_per_pixel = 100;
+    cam.max_depth         = 50;
+    cam.background        = color(0.70, 0.80, 1.00);
+    ...
+}
+```
+
+由于我们移除了用于确定光线击中天空时的天空颜色的代码，我们需要为我们旧的场景渲染传入一个新的颜色值。我们选择了整个天空统一的平淡蓝白色。你总是可以传入一个布尔值，以在之前的天空盒代码和新的纯色背景之间切换。我们在这里保持简单。
+
+## 7.3 将对象变成灯光 
+
+如果我们设置一个矩形作为光源：
+
+```cpp
+// main.cc
+void simple_light() {
+    hittable_list world;
+
+    auto pertext = make_shared<noise_texture>(4);
+    world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(pertext)));
+    world.add(make_shared<sphere>(point3(0,2,0), 2, make_shared<lambertian>(pertext)));
+
+    auto difflight = make_shared<diffuse_light>(color(4,4,4));
+    world.add(make_shared<quad>(point3(3,1,-2), vec3(2,0,0), vec3(0,2,0), difflight));
+
+    camera cam;
+
+    cam.aspect_ratio      = 16.0 / 9.0;
+    cam.image_width       = 400;
+    cam.samples_per_pixel = 100;
+    cam.max_depth         = 50;
+    cam.background        = color(0,0,0);
+
+    cam.vfov     = 20;
+    cam.lookfrom = point3(26,3,6);
+    cam.lookat   = point3(0,2,0);
+    cam.vup      = vec3(0,1,0);
+
+    cam.defocus_angle = 0;
+
+    cam.render(world);
+}
+
+int main() {
+    switch (6) {
+        case 1:  random_spheres();     break;
+        case 2:  two_spheres();        break;
+        case 3:  earth();              break;
+        case 4:  two_perlin_spheres(); break;
+        case 5:  quads();              break;
+        case 6:  simple_light();       break;
+    }
+}
+```
+
+我们得到：
+
+<img src="https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.17-rect-light.png" alt="矩形光源场景" />
+
+请注意，光源的亮度超过(1,1,1)。这使它足够亮，可以照亮东西。
+
+尝试让一些球体也成为灯光。
+
+```cpp
+// main.cc
+void simple_light() {
+    ...
+    auto difflight = make_shared<diffuse_light>(color(4,4,4));
+    world.add(make_shared<sphere>(point3(0,7,0), 2, difflight));
+    world.add(make_shared<quad>(point3(3,1,-2), vec3(2,0,0), vec3(0,2,0), difflight));
+    ...
+}
+```
+
+![带有矩形和球形光源的场景](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.18-rect-sphere-light.png)
+
+## 7.4 创建一个空的“*Cornell Box*” 
+
+“*Cornell Box*”于1984年被引入，用于模拟光线在漫反射表面之间的相互作用。让我们制作盒子的5个墙壁和灯光：
+
+```cpp
+// main.cc
+void cornell_box() {
+    hittable_list world;
+
+    auto red   = make_shared<lambertian>(color(.65, .05, .05));
+    auto white = make_shared<lambertian>(color(.73, .73, .73));
+    auto green = make_shared<lambertian>(color(.12, .45, .15));
+    auto light = make_shared<diffuse_light>(color(15, 15, 15));
+
+    world.add(make_shared<quad>(point3(555,0,0), vec3(0,555,0), vec3(0,0,555), green));
+    world.add(make_shared<quad>(point3(0,0,0), vec3(0,555,0), vec3(0,0,555), red));
+    world.add(make_shared<quad>(point3(343, 554, 332), vec3(-130,0,0), vec3(0,0,-105), light));
+    world.add(make_shared<quad>(point3(0,0,0), vec3(555,0,0), vec3(0,0,555), white));
+    world.add(make_shared<quad>(point3(555,555,555), vec3(-555,0,0), vec3(0,0,-555), white));
+    world.add(make_shared<quad>(point3(0,0,555), vec3(555,0,0), vec3(0,555,0), white));
+
+    camera cam;
+
+    cam.aspect_ratio      = 1.0;
+    cam.image_width       = 600;
+    cam.samples_per_pixel = 200;
+    cam.max_depth         = 50;
+    cam.background        = color(0,0,0);
+
+    cam.vfov     = 40;
+    cam.lookfrom = point3(278, 278, -800);
+    cam.lookat   = point3(278, 278, 0);
+    cam.vup      = vec3(0,1,0);
+
+    cam.defocus_angle = 0;
+
+    cam.render(world);
+}
+
+int main() {
+    switch (7) {
+        case 1:  random_spheres();     break;
+        case 2:  two_spheres();        break;
+        case 3:  earth();              break;
+        case 4:  two_perlin_spheres(); break;
+        case 5:  quads();              break;
+        case 6:  simple_light();       break;
+        case 7:  cornell_box();        break;
+    }
+}
+```
+
+我们得到：
+
+![空的Cornell box](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.19-cornell-empty.png)
+
+这幅图像非常嘈杂，因为光源很小。
+
+# 8. 实例
+
+康奈尔盒子通常包含两个相对于墙壁旋转的块体。首先，让我们创建一个返回盒子的函数，通过创建一个由六个矩形组成的可命中列表（`hittable_list`）：
+
+```cpp
+// quad.h
+...
+#include "hittable_list.h"
+...
+inline shared_ptr<hittable_list> box(const point3& a, const point3& b, shared_ptr<material> mat)
+{
+    // 返回包含两个相对顶点 a 和 b 的三维方框（六边形）。
+
+    auto sides = make_shared<hittable_list>();
+
+    // 用最小坐标和最大坐标构造两个相对的顶点。
+    auto min = point3(fmin(a.x(), b.x()), fmin(a.y(), b.y()), fmin(a.z(), b.z()));
+    auto max = point3(fmax(a.x(), b.x()), fmax(a.y(), b.y()), fmax(a.z(), b.z()));
+
+    auto dx = vec3(max.x() - min.x(), 0, 0);
+    auto dy = vec3(0, max.y() - min.y(), 0);
+    auto dz = vec3(0, 0, max.z() - min.z());
+
+    sides->add(make_shared<quad>(point3(min.x(), min.y(), max.z()),  dx,  dy, mat)); // front
+    sides->add(make_shared<quad>(point3(max.x(), min.y(), max.z()), -dz,  dy, mat)); // right
+    sides->add(make_shared<quad>(point3(max.x(), min.y(), min.z()), -dx,  dy, mat)); // back
+    sides->add(make_shared<quad>(point3(min.x(), min.y(), min.z()),  dz,  dy, mat)); // left
+    sides->add(make_shared<quad>(point3(min.x(), max.y(), max.z()),  dx, -dz, mat)); // top
+    sides->add(make_shared<quad>(point3(min.x(), min.y(), min.z()),  dx,  dz, mat)); // bottom
+
+    return sides;
+}
+```
+
+现在我们可以添加两个块体（但未旋转）。
+
+```cpp
+// main.cc
+void cornell_box() {
+    ...
+    world.add(make_shared<quad>(point3(555,0,0), vec3(0,555,0), vec3(0,0,555), green));
+    world.add(make_shared<quad>(point3(0,0,0), vec3(0,555,0), vec3(0,0,555), red));
+    world.add(make_shared<quad>(point3(343, 554, 332), vec3(-130,0,0), vec3(0,0,-105), light));
+    world.add(make_shared<quad>(point3(0,0,0), vec3(555,0,0), vec3(0,0,555), white));
+    world.add(make_shared<quad>(point3(555,555,555), vec3(-555,0,0), vec3(0,0,-555), white));
+    world.add(make_shared<quad>(point3(0,0,555), vec3(555,0,0), vec3(0,555,0), white));
+
+    world.add(box(point3(130, 0, 65), point3(295, 165, 230), white));
+    world.add(box(point3(265, 0, 295), point3(430, 330, 460), white));
+
+    camera cam;
+    ...
+}
+```
+
+既然我们有了盒子，我们需要稍微旋转它们，以使其与真实的康奈尔盒子匹配。在光线追踪中，这通常是通过实例来完成的。一个实例是已经放置到场景中的几何原始体的副本。这个实例完全独立于原始体的其他副本，并且可以移动或旋转。在这种情况下，我们的几何原始体是可命中的盒子对象，我们想要旋转它。这在光线追踪中特别容易，因为我们实际上不需要移动场景中的对象；相反，我们以相反的方向移动光线。例如，考虑一个平移（通常称为移动）。我们可以把原点处的粉色盒子的所有x分量加2，或者（正如我们在光线追踪中几乎总是做的）让盒子保持在原位，但在其命中例程中从光线原点的x分量中减去2。
+
+![移动光线与盒子的光线-盒子相交](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-2.08-ray-box.jpg)
+
+## 8.1 实例平移 
+
+您可以将此视为移动或坐标变换，这取决于您。关于此的合理思考方式是考虑将入射光线向后移动偏移量，确定是否发生交叉，然后将交点向前移动偏移量。
+
+我们需要将交点向前移动偏移量，以确保交点实际上在入射光线的路径中。如果我们忘记将交点向前移动，那么交点将在偏移光线的路径中，这是不正确的。让我们添加代码来实现这一点。
+
+```cpp
+// hittable.h
+class translate : public hittable {
+  public:
+    bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
+        // 将光线向后移动偏移量
+        ray offset_r(r.origin() - offset, r.direction(), r.time());
+
+        // 确定沿偏移发生相交的位置（如果有）
+        if (!object->hit(offset_r, ray_t, rec))
+            return false;
+
+        // 将交叉点向前移动偏移量
+        rec.p += offset;
+
+        return true;
+    }
+
+  private:
+    shared_ptr<hittable> object;
+    vec3 offset;
+};
+```
+
+... 然后补充`translate`类的剩余部分：
+
+```cpp
+// hittable.h
+class translate : public hittable {
+  public:
+    translate(shared_ptr<hittable> p, const vec3& displacement)
+      : object(p), offset(displacement)
+    {
+        bbox = object->bounding_box() + offset;
+    }
+
+    bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
+        // Move the ray backwards by the offset
+        ray offset_r(r.origin() - offset, r.direction(), r.time());
+
+        // Determine where (if any) an intersection occurs along the offset ray
+        if (!object->hit(offset_r, ray_t, rec))
+            return false;
+
+        // Move the intersection point forwards by the offset
+        rec.p += offset;
+
+        return true;
+    }
+
+    aabb bounding_box() const override { return bbox; }
+
+  private:
+    shared_ptr<hittable> object;
+    vec3 offset;
+    aabb bbox;
+};
+```
+
+我们还需要记得偏移边界框，否则入射光线可能会在错误的地方寻找交点并轻易忽略相交的位置。上面的表达式`object->bounding_box() + offset` 需要一些额外的支持。
+
+```cpp
+// aabb.h
+class aabb {
+    ...
+};
+
+aabb operator+(const aabb& bbox, const vec3& offset) {
+    return aabb(bbox.x + offset.x(), bbox.y + offset.y(), bbox.z + offset.z());
+}
+
+aabb operator+(const vec3& offset, const aabb& bbox) {
+    return bbox + offset;
+}
+```
+
+由于每个轴对齐包围盒（aabb）的维度都表示为区间（interval），我们还需要为区间增加一个加法运算符。
+
+```cpp
+// interval.h
+class interval {
+    ...
+};
+
+const interval interval::empty    = interval(+infinity, -infinity);
+const interval interval::universe = interval(-infinity, +infinity);
+
+interval operator+(const interval& ival, double displacement) {
+    return interval(ival.min + displacement, ival.max + displacement);
+}
+
+interval operator+(double displacement, const interval& ival) {
+    return ival + displacement;
+}
+```
+
+## 8.2 实例旋转 
+
+旋转并不像平移那样容易理解或生成公式。一种常见的图形学策略是沿 x、y 和 z 轴进行所有旋转。这些旋转在某种意义上是轴对齐的。首先，让我们绕 z 轴旋转 $$\theta$$ 角度。这将仅改变 x 和 y ，并且不依赖于 z。
+
+![绕Z轴旋转](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-2.09-rot-z.jpg)
+
+这涉及到一些基本的三角形相关公式，我在这里不会详细介绍。这会给你留下一个印象，即这是稍微复杂一点的问题，但它是直接的，你可以在任何图形学教科书和许多讲义中找到。绕 z 轴逆时针旋转的结果是：
+$$
+x^\prime = cos(\theta)\cdot x - sin(\theta)\cdot y \\
+y^\prime = sin(\theta)\cdot x + cos(\theta)\cdot y
+$$
+这个公式对于任何 $$\theta$$ 都适用，并且不需要考虑象限或类似的情况。逆变换则是相反的几何操作：旋转 $$-\theta$$ 角度。这里要记住，$$cos(\theta)=cos(−\theta)$$ 和 $$sin(-\theta)=−sin(\theta)$$，所以公式非常简单。
+
+类似地，绕 y 轴旋转（正如我们希望对盒子中的块体所做的那样）的公式是：
+$$
+x^\prime = cos(\theta)\cdot x + sin(\theta)\cdot z \\
+z^\prime = -sin(\theta)\cdot x + cos(\theta)\cdot z
+$$
+如果我们想绕 x 轴旋转：
+$$
+y^\prime = cos(\theta)\cdot y - sin(\theta)\cdot z \\
+z^\prime = sin(\theta)\cdot y + cos(\theta)\cdot z
+$$
+将平移视为初始光线的简单移动是理解发生了什么的好方法。但是，对于像旋转这样的复杂操作，很容易意外地混淆公式（或忘记一个负号），所以最好将旋转视为坐标变换。
+
+上面的 `translate::hit` 函数的伪代码描述了该函数的移动：
+
+1. 将光线向后移动 
+2. 确定沿偏移光线是否存在交点（如果有，交点在哪里） 
+3. 将交点向前移动
+
+但这也可以理解为坐标变换：
+
+1. 将光线从世界空间改为物体空间 
+2. 确定物体空间中是否存在交点（如果有，交点在哪里） 
+3. 将交点从物体空间改为世界空间 
+
+旋转物体不仅会改变交点，还会改变表面法线向量，从而改变反射和折射的方向。因此，我们也需要改变法线。幸运的是，法线会与向量类似地旋转，因此我们可以使用上面的相同公式。虽然法线和向量在经历旋转和平移的物体上看起来相同，但在经历缩放的物体上需要特别注意以保持法线与表面垂直。我们在这里不会涉及这一点，但如果你实现了缩放，应该研究表面法线变换。
+
+我们需要从将光线从世界空间改为物体空间开始，这对于旋转意味着以 $$-\theta$$ 角度旋转。
+$$
+x^\prime = cos(\theta)\cdot x - sin(\theta)\cdot z \\
+z^\prime = sin(\theta)\cdot x + cos(\theta)\cdot z
+$$
+ 我们现在可以为 y 轴旋转创建一个类：
+
+```cpp
+// hittable.h
+class rotate_y : public hittable {
+  public:
+
+    bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
+        // 将光线从世界空间更改为对象空间
+        auto origin = r.origin();
+        auto direction = r.direction();
+
+        origin[0] = cos_theta*r.origin()[0] - sin_theta*r.origin()[2];
+        origin[2] = sin_theta*r.origin()[0] + cos_theta*r.origin()[2];
+
+        direction[0] = cos_theta*r.direction()[0] - sin_theta*r.direction()[2];
+        direction[2] = sin_theta*r.direction()[0] + cos_theta*r.direction()[2];
+
+        ray rotated_r(origin, direction, r.time());
+
+        // 确定对象空间中发生相交的位置（如果有）
+        if (!object->hit(rotated_r, ray_t, rec))
+            return false;
+
+        // 将交点从对象空间更改为世界空间
+        auto p = rec.p;
+        p[0] =  cos_theta*rec.p[0] + sin_theta*rec.p[2];
+        p[2] = -sin_theta*rec.p[0] + cos_theta*rec.p[2];
+
+        // 将法线从对象空间更改为世界空间
+        auto normal = rec.normal
+        normal[0] =  cos_theta*rec.normal[0] + sin_theta*rec.normal[2];
+        normal[2] = -sin_theta*rec.normal[0] + cos_theta*rec.normal[2];
+
+        rec.p = p;
+        rec.normal = normal;
+
+        return true;
+    }
+};
+```
+
+... 然后完成该类的其余部分：
+
+```cpp
+// hittable.h
+class rotate_y : public hittable {
+  public:
+    rotate_y(shared_ptr<hittable> p, double angle) : object(p) {
+        auto radians = degrees_to_radians(angle);
+        sin_theta = sin(radians);
+        cos_theta = cos(radians);
+        bbox = object->bounding_box();
+
+        point3 min( infinity,  infinity,  infinity);
+        point3 max(-infinity, -infinity, -infinity);
+
+        for (int i = 0; i < 2; i++) {
+            for (int j = 0; j < 2; j++) {
+                for (int k = 0; k < 2; k++) {
+                    auto x = i*bbox.x.max + (1-i)*bbox.x.min;
+                    auto y = j*bbox.y.max + (1-j)*bbox.y.min;
+                    auto z = k*bbox.z.max + (1-k)*bbox.z.min;
+
+                    auto newx =  cos_theta*x + sin_theta*z;
+                    auto newz = -sin_theta*x + cos_theta*z;
+
+                    vec3 tester(newx, y, newz);
+
+                    for (int c = 0; c < 3; c++) {
+                        min[c] = fmin(min[c], tester[c]);
+                        max[c] = fmax(max[c], tester[c]);
+                    }
+                }
+            }
+        }
+
+        bbox = aabb(min, max);
+    }
+
+    bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
+        ...
+    }
+
+    aabb bounding_box() const override { return bbox; }
+
+  private:
+    shared_ptr<hittable> object;
+    double sin_theta;
+    double cos_theta;
+    aabb bbox;
+};
+```
+
+*Cornell Box*的更改如下：
+
+```cpp
+// main.cc
+void cornell_box() {
+    ...
+    world.add(make_shared<quad>(point3(0,0,555), vec3(555,0,0), vec3(0,555,0), white));
+
+    shared_ptr<hittable> box1 = box(point3(0,0,0), point3(165,330,165), white);
+    box1 = make_shared<rotate_y>(box1, 15);
+    box1 = make_shared<translate>(box1, vec3(265,0,295));
+    world.add(box1);
+
+    shared_ptr<hittable> box2 = box(point3(0,0,0), point3(165,165,165), white);
+    box2 = make_shared<rotate_y>(box2, -18);
+    box2 = make_shared<translate>(box2, vec3(130,0,65));
+    world.add(box2);
+
+    camera cam;
+    ...
+}
+```
+
+这会得到：
+
+![标准Cornell Box](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.21-cornell-standard.png)
+
+# 9. 体积雾
+
+在光线追踪器中添加烟、雾、薄雾等效果是一种不错的补充。这些有时被称为**体积雾**(*volumes*)或**参与介质**(*participating media*)。另一个值得添加的功能是次表面散射，这有点像物体内部的密集雾气。这通常会给软件架构带来混乱，因为体积雾与表面是不同的东西，但一个巧妙的技巧是将体积雾视为随机表面。大量的烟雾可以被替换为在体积雾的每个点可能存在或可能不存在的表面。当你看到代码时，这会更有意义。
+
+## 9.1 恒定密度介质 
+
+首先，我们从一个恒定密度的体积雾开始。光线穿过这种介质时，可能会在体积内部发生散射，或者像图中的中间光线那样完全穿过。像轻雾这样的较薄、较透明的体积雾，更有可能让光线像中间那样穿过。光线穿过体积雾的距离也决定了光线完全穿过的可能性。
+
+![光线与体积雾的相互作用](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/fig-2.10-ray-vol.jpg)
+
+随着光线穿过体积雾，它可能在任何点发生散射。体积雾越密集，发生这种情况的可能性越大。光线在任何小距离 $$\Delta L$$ 内发生散射的概率是：
+$$
+probability = C \cdot \Delta L
+$$
+其中 $$C$$ 与体积雾的光学密度成正比。如果你仔细研究所有的微分方程，对于一个随机数，你会得到散射发生的距离。如果那个距离在体积雾外，则没有“命中”。对于恒定密度的体积雾，我们只需要密度 $$C$$ 和边界。我将使用另一个可碰撞对象作为边界。
+
+结果类是：
+
+```cpp
+// constant_medium.h
+#ifndef CONSTANT_MEDIUM_H
+#define CONSTANT_MEDIUM_H
+
+#include "rtweekend.h"
+
+#include "hittable.h"
+#include "material.h"
+#include "texture.h"
+
+class constant_medium : public hittable {
+  public:
+    constant_medium(shared_ptr<hittable> b, double d, shared_ptr<texture> a)
+      : boundary(b), neg_inv_density(-1/d), phase_function(make_shared<isotropic>(a))
+    {}
+
+    constant_medium(shared_ptr<hittable> b, double d, color c)
+      : boundary(b), neg_inv_density(-1/d), phase_function(make_shared<isotropic>(c))
+    {}
+
+    bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
+        // 调试时偶尔打印示例。要启用，请将enableDebug 设置为true。
+        const bool enableDebug = false;
+        const bool debugging = enableDebug && random_double() < 0.00001;
+
+        hit_record rec1, rec2;
+
+        if (!boundary->hit(r, interval::universe, rec1))
+            return false;
+
+        if (!boundary->hit(r, interval(rec1.t+0.0001, infinity), rec2))
+            return false;
+
+        if (debugging) std::clog << "\nray_tmin=" << rec1.t << ", ray_tmax=" << rec2.t << '\n';
+
+        if (rec1.t < ray_t.min) rec1.t = ray_t.min;
+        if (rec2.t > ray_t.max) rec2.t = ray_t.max;
+
+        if (rec1.t >= rec2.t)
+            return false;
+
+        if (rec1.t < 0)
+            rec1.t = 0;
+
+        auto ray_length = r.direction().length();
+        auto distance_inside_boundary = (rec2.t - rec1.t) * ray_length;
+        auto hit_distance = neg_inv_density * log(random_double());
+
+        if (hit_distance > distance_inside_boundary)
+            return false;
+
+        rec.t = rec1.t + hit_distance / ray_length;
+        rec.p = r.at(rec.t);
+
+        if (debugging) {
+            std::clog << "hit_distance = " <<  hit_distance << '\n'
+                      << "rec.t = " <<  rec.t << '\n'
+                      << "rec.p = " <<  rec.p << '\n';
+        }
+
+        rec.normal = vec3(1,0,0);  // 任意
+        rec.front_face = true;     // 任意
+        rec.mat = phase_function;
+
+        return true;
+    }
+
+    aabb bounding_box() const override { return boundary->bounding_box(); }
+
+  private:
+    shared_ptr<hittable> boundary;
+    double neg_inv_density;
+    shared_ptr<material> phase_function;
+};
+
+#endif
+```
+
+各向同性的散射函数选择一个均匀随机方向：
+
+```cpp
+// material.h
+class isotropic : public material {
+  public:
+    isotropic(color c) : albedo(make_shared<solid_color>(c)) {}
+    isotropic(shared_ptr<texture> a) : albedo(a) {}
+
+    bool scatter(const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered)
+    const override {
+        scattered = ray(rec.p, random_unit_vector(), r_in.time());
+        attenuation = albedo->value(rec.u, rec.v, rec.p);
+        return true;
+    }
+
+  private:
+    shared_ptr<texture> albedo;
+};
+```
+
+我们必须非常小心地处理边界逻辑，因为我们需要确保这适用于体积雾内部的光线起源点。在云层中，光线会频繁反弹，这是一个常见的情况。
+
+此外，上述代码假设一旦光线离开恒定介质边界，它将永远在边界外继续传播。换句话说，它假设边界形状是凸的。因此，这种特定的实现适用于盒子或球体这样的边界，但不适用于环面或包含空隙的形状。可以编写一个处理任意形状的实现，但我们将把它留作读者的练习。
+
+## 9.2 用烟雾和雾气渲染康奈尔盒子 
+
+如果我们用烟雾和雾气（深色和浅色颗粒）替换两个块，并使光线更大（并调暗，以免过曝）以加快收敛：
+
+```cpp
+// mian.cc
+#include "constant_medium.h"
+...
+void cornell_smoke() {
+    hittable_list world;
+
+    auto red   = make_shared<lambertian>(color(.65, .05, .05));
+    auto white = make_shared<lambertian>(color(.73, .73, .73));
+    auto green = make_shared<lambertian>(color(.12, .45, .15));
+    auto light = make_shared<diffuse_light>(color(7, 7, 7));
+
+    world.add(make_shared<quad>(point3(555,0,0), vec3(0,555,0), vec3(0,0,555), green));
+    world.add(make_shared<quad>(point3(0,0,0), vec3(0,555,0), vec3(0,0,555), red));
+    world.add(make_shared<quad>(point3(113,554,127), vec3(330,0,0), vec3(0,0,305), light));
+    world.add(make_shared<quad>(point3(0,555,0), vec3(555,0,0), vec3(0,0,555), white));
+    world.add(make_shared<quad>(point3(0,0,0), vec3(555,0,0), vec3(0,0,555), white));
+    world.add(make_shared<quad>(point3(0,0,555), vec3(555,0,0), vec3(0,555,0), white));
+
+    shared_ptr<hittable> box1 = box(point3(0,0,0), point3(165,330,165), white);
+    box1 = make_shared<rotate_y>(box1, 15);
+    box1 = make_shared<translate>(box1, vec3(265,0,295));
+
+    shared_ptr<hittable> box2 = box(point3(0,0,0), point3(165,165,165), white);
+    box2 = make_shared<rotate_y>(box2, -18);
+    box2 = make_shared<translate>(box2, vec3(130,0,65));
+
+    world.add(make_shared<constant_medium>(box1, 0.01, color(0,0,0)));
+    world.add(make_shared<constant_medium>(box2, 0.01, color(1,1,1)));
+
+    camera cam;
+
+    cam.aspect_ratio      = 1.0;
+    cam.image_width       = 600;
+    cam.samples_per_pixel = 200;
+    cam.max_depth         = 50;
+    cam.background        = color(0,0,0);
+
+    cam.vfov     = 40;
+    cam.lookfrom = point3(278, 278, -800);
+    cam.lookat   = point3(278, 278, 0);
+    cam.vup      = vec3(0,1,0);
+
+    cam.defocus_angle = 0;
+
+    cam.render(world);
+}
+
+int main() {
+    switch (8) {
+        case 1:  random_spheres();     break;
+        case 2:  two_spheres();        break;
+        case 3:  earth();              break;
+        case 4:  two_perlin_spheres(); break;
+        case 5:  quads();              break;
+        case 6:  simple_light();       break;
+        case 7:  cornell_box();        break;
+        case 8:  cornell_smoke();      break;
+    }
+}
+```
+
+我们得到：
+
+![康奈尔烟雾箱](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.22-cornell-smoke.png)
