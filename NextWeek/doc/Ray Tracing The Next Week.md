@@ -98,8 +98,11 @@ class sphere : public hittable {
     }
     ...
 
-  private:    point3 center1;    double radius;
-    shared_ptr<material> mat;    bool is_moving;
+  private:    
+    point3 center1;    
+    double radius;
+    shared_ptr<material> mat;    
+    bool is_moving;
     vec3 center_vec;
 
     point3 center(double time) const {
@@ -161,7 +164,8 @@ class lambertian : public material {
         if (scatter_direction.near_zero())
             scatter_direction = rec.normal;
 
-        scattered = ray(rec.p, scatter_direction, r_in.time());        attenuation = albedo;
+        scattered = ray(rec.p, scatter_direction, r_in.time());        
+        attenuation = albedo;
         return true;
     }
     ...
@@ -171,7 +175,9 @@ class metal : public material {
     ...
     bool scatter(const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered)
     const override {
-        vec3 reflected = reflect(unit_vector(r_in.direction()), rec.normal);        scattered = ray(rec.p, reflected + fuzz*random_in_unit_sphere(), r_in.time());        attenuation = albedo;
+        vec3 reflected = reflect(unit_vector(r_in.direction()), rec.normal);        
+        scattered = ray(rec.p, reflected + fuzz*random_in_unit_sphere(), r_in.time());        
+        attenuation = albedo;
         return (dot(scattered.direction(), rec.normal) > 0);
     }
     ...
@@ -181,7 +187,9 @@ class dielectric : public material {
     ...
     bool scatter(const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered)
     const override {
-        ...        scattered = ray(rec.p, direction, r_in.time());        return true;
+        ...        
+            scattered = ray(rec.p, direction, r_in.time());        
+        	return true;
     }
     ...
 };
@@ -511,11 +519,12 @@ class sphere : public hittable {
     // Moving Sphere
     sphere(point3 _center1, point3 _center2, double _radius, shared_ptr<material> _material)
       : center1(_center1), radius(_radius), mat(_material), is_moving(true)
-    {        auto rvec = vec3(radius, radius, radius);
-        aabb box1(_center1 - rvec, _center1 + rvec);
-        aabb box2(_center2 - rvec, _center2 + rvec);
-        bbox = aabb(box1, box2);
-        center_vec = _center2 - _center1;
+    {        
+          auto rvec = vec3(radius, radius, radius);
+          aabb box1(_center1 - rvec, _center1 + rvec);
+          aabb box2(_center2 - rvec, _center2 + rvec);
+          bbox = aabb(box1, box2);
+          center_vec = _center2 - _center1;
     }
     ...
 };
@@ -539,7 +548,8 @@ class interval {
 // aabb.h
 class aabb {
   public:
-    ...    aabb(const aabb& box0, const aabb& box1) {
+    ...    
+    aabb(const aabb& box0, const aabb& box1) {
         x = interval(box0.x, box1.x);
         y = interval(box0.y, box1.y);
         z = interval(box0.z, box1.z);
@@ -1033,7 +1043,9 @@ class sphere : public hittable {
         rec.t = root;
         rec.p = r.at(rec.t);
         vec3 outward_normal = (rec.p - center) / radius;
-        rec.set_face_normal(r, outward_normal);        get_sphere_uv(outward_normal, rec.u, rec.v);        rec.mat = mat;
+        rec.set_face_normal(r, outward_normal);        
+        get_sphere_uv(outward_normal, rec.u, rec.v);        
+        rec.mat = mat;
 
         return true;
     }
@@ -1058,7 +1070,9 @@ class lambertian : public material {
         if (scatter_direction.near_zero())
             scatter_direction = rec.normal;
 
-        scattered = ray(rec.p, scatter_direction, r_in.time());        attenuation = albedo->value(rec.u, rec.v, rec.p);        return true;
+        scattered = ray(rec.p, scatter_direction, r_in.time());        
+        attenuation = albedo->value(rec.u, rec.v, rec.p);        
+        return true;
     }
 
   private:    shared_ptr<texture> albedo;};
@@ -1249,6 +1263,8 @@ int main() {
 我们开始看到所有颜色都是纹理的强大之处 —— 我们可以将任何类型的纹理分配给 `lambertian` 材料，而 `lambertian` 不需要意识到它。
 
 如果照片返回的是中间有一个大的青色球体，那么 `stb_image` 没有找到你的地球地图照片。程序将在可执行文件的同一目录中查找文件。确保将地球图复制到你的构建目录中，或者重写 `earth()` 函数以指向其他地方。
+
+![地球映射](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.05-earth-sphere.png)
 
 # 5. 柏林噪声
 
@@ -2024,7 +2040,7 @@ class quad : public hittable {
 
 我们将把这些额外的二维形状作为练习题留给读者，这取决于你的探索欲望。可以考虑三角形、圆盘和圆环（所有这些都非常容易）。你甚至可以根据纹理贴图的像素或 *Mandelbrot* 形状创建剪切模板！
 
-为了使这种实验更容易一些，我们将从`hit`方法中分离出$(\alpha,\beta)$内部测试方法。
+#### 为了使这种实验更容易一些，我们将从`hit`方法中分离出$$(\alpha,\beta)$$内部测试方法。
 
 ```cpp
 //quad.h
@@ -2935,3 +2951,114 @@ int main() {
 我们得到：
 
 ![康奈尔烟雾箱](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.22-cornell-smoke.png)
+
+# 10. 测试所有新特性的场景 
+
+让我们把所有内容整合起来，用一层大而薄的薄雾覆盖一切，再加上一个蓝色的次表面反射球体（我们没有明确实现它，但体积雾内的介质就是次表面材料）。渲染器中剩余的最大限制是没有阴影光线，但这也是为什么我们可以免费获得焦散效果和次表面效果。这是一种双刃剑的设计决策。
+
+另外，请注意，我们将参数化这个最终场景，以支持快速测试的低质量渲染。
+
+```cpp
+// main.cc
+#include "bvh.h"
+...
+void final_scene(int image_width, int samples_per_pixel, int max_depth) {
+    hittable_list boxes1;
+    auto ground = make_shared<lambertian>(color(0.48, 0.83, 0.53));
+
+    int boxes_per_side = 20;
+    for (int i = 0; i < boxes_per_side; i++) {
+        for (int j = 0; j < boxes_per_side; j++) {
+            auto w = 100.0;
+            auto x0 = -1000.0 + i*w;
+            auto z0 = -1000.0 + j*w;
+            auto y0 = 0.0;
+            auto x1 = x0 + w;
+            auto y1 = random_double(1,101);
+            auto z1 = z0 + w;
+
+            boxes1.add(box(point3(x0,y0,z0), point3(x1,y1,z1), ground));
+        }
+    }
+
+    hittable_list world;
+
+    world.add(make_shared<bvh_node>(boxes1));
+
+    auto light = make_shared<diffuse_light>(color(7, 7, 7));
+    world.add(make_shared<quad>(point3(123,554,147), vec3(300,0,0), vec3(0,0,265), light));
+
+    auto center1 = point3(400, 400, 200);
+    auto center2 = center1 + vec3(30,0,0);
+    auto sphere_material = make_shared<lambertian>(color(0.7, 0.3, 0.1));
+    world.add(make_shared<sphere>(center1, center2, 50, sphere_material));
+
+    world.add(make_shared<sphere>(point3(260, 150, 45), 50, make_shared<dielectric>(1.5)));
+    world.add(make_shared<sphere>(
+        point3(0, 150, 145), 50, make_shared<metal>(color(0.8, 0.8, 0.9), 1.0)
+    ));
+
+    auto boundary = make_shared<sphere>(point3(360,150,145), 70, make_shared<dielectric>(1.5));
+    world.add(boundary);
+    world.add(make_shared<constant_medium>(boundary, 0.2, color(0.2, 0.4, 0.9)));
+    boundary = make_shared<sphere>(point3(0,0,0), 5000, make_shared<dielectric>(1.5));
+    world.add(make_shared<constant_medium>(boundary, .0001, color(1,1,1)));
+
+    auto emat = make_shared<lambertian>(make_shared<image_texture>("earthmap.jpg"));
+    world.add(make_shared<sphere>(point3(400,200,400), 100, emat));
+    auto pertext = make_shared<noise_texture>(0.1);
+    world.add(make_shared<sphere>(point3(220,280,300), 80, make_shared<lambertian>(pertext)));
+
+    hittable_list boxes2;
+    auto white = make_shared<lambertian>(color(.73, .73, .73));
+    int ns = 1000;
+    for (int j = 0; j < ns; j++) {
+        boxes2.add(make_shared<sphere>(point3::random(0,165), 10, white));
+    }
+
+    world.add(make_shared<translate>(
+        make_shared<rotate_y>(
+            make_shared<bvh_node>(boxes2), 15),
+            vec3(-100,270,395)
+        )
+    );
+
+    camera cam;
+
+    cam.aspect_ratio      = 1.0;
+    cam.image_width       = image_width;
+    cam.samples_per_pixel = samples_per_pixel;
+    cam.max_depth         = max_depth;
+    cam.background        = color(0,0,0);
+
+    cam.vfov     = 40;
+    cam.lookfrom = point3(478, 278, -600);
+    cam.lookat   = point3(278, 278, 0);
+    cam.vup      = vec3(0,1,0);
+
+    cam.defocus_angle = 0;
+
+    cam.render(world);
+}
+
+int main() {
+    switch (0) {
+        case 1:  random_spheres();            break;
+        case 2:  two_spheres();               break;
+        case 3:  earth();                     break;
+        case 4:  two_perlin_spheres();        break;
+        case 5:  quads();                     break;
+        case 6:  simple_light();              break;
+        case 7:  cornell_box();               break;
+        case 8:  cornell_smoke();             break;
+        case 9:  final_scene(800, 10000, 40); break;
+        default: final_scene(400,   250,  4); break;
+    }
+}
+```
+
+以每像素10,000条光线运行（甜美的梦想）将产生以下效果：
+
+![最终场景](https://raw.githubusercontent.com/Penguin-SAMA/PicGo/main/img-2.23-book2-final.jpg)
+
+现在去创造一个属于你自己的真正酷炫的图像吧！请访问 https://in1weekend.blogspot.com/ 以获取更多阅读和功能的指引，并随时通过电子邮件向我发送问题、评论和酷炫的图像 [ptrshrl@gmail.com](mailto:ptrshrl@gmail.com)。

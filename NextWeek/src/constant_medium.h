@@ -26,14 +26,14 @@ public:
 
         hit_record rec1, rec2;
 
-        if (!boundary->hit(r, interval::universe, rec1)) return false;
+        if (!boundary->hit(r, interval(-infinity, +infinity), rec1)) return false;
 
         if (!boundary->hit(r, interval(rec1.t + 0.0001, infinity), rec2)) return false;
 
         if (debugging) std::clog << "\nray_tmin=" << rec1.t << ", ray_tmax=" << rec2.t << '\n';
 
         if (rec1.t < ray_t.min) rec1.t = ray_t.min;
-        if (rec2.t < ray_t.max) rec2.t = ray_t.max;
+        if (rec2.t > ray_t.max) rec2.t = ray_t.max;
 
         if (rec1.t >= rec2.t) return false;
 
